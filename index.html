@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Blockcraft</title>
+  <meta name="description" content="A Minecraft-style voxel sandbox in the browser, with the Wilderness Bound update: dappled forests, poplar trees, abandoned camps and more.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game" aria-label="Game view"></canvas>
+
+    <div id="hud" hidden>
+      <div id="underwater" class="tint"></div>
+      <div id="inlava" class="tint"></div>
+      <div id="hurt" class="tint"></div>
+      <div id="sleep-fade" class="tint"></div>
+      <div id="crosshair" aria-hidden="true"></div>
+      <pre id="debug" hidden></pre>
+      <div id="toast" role="status" aria-live="polite"></div>
+      <div id="hud-bottom">
+        <div id="item-name"></div>
+        <div id="bars">
+          <div id="air" class="icons"></div>
+          <div class="bar-row">
+            <div id="hearts" class="icons"></div>
+            <div id="food" class="icons right"></div>
+          </div>
+        </div>
+        <div id="hotbar"></div>
+      </div>
+      <div id="eat-bar" hidden><span></span></div>
+    </div>
+
+    <div id="inventory" class="overlay" hidden>
+      <div id="inv-panel" class="panel" role="dialog" aria-label="Inventory"></div>
+    </div>
+
+    <div id="map" class="overlay" hidden>
+      <div class="panel map-panel" role="dialog" aria-labelledby="map-title">
+        <div class="map-head">
+          <h2 id="map-title">Map</h2>
+          <div class="map-tools">
+            <button class="mc-btn small" type="button" data-zoom="-1" aria-label="Zoom out">−</button>
+            <span id="map-zoom">1:1</span>
+            <button class="mc-btn small" type="button" data-zoom="1" aria-label="Zoom in">+</button>
+            <button class="mc-btn small" type="button" id="map-close">Close</button>
+          </div>
+        </div>
+        <canvas id="map-canvas" width="512" height="512"></canvas>
+        <div class="map-foot">
+          <span id="map-coords"></span>
+          <span class="legend"><i class="lg you"></i>You <i class="lg spawn"></i>Spawn <i class="lg camp"></i>Camp <i class="lg x"></i>Explorer target</span>
+        </div>
+        <p id="map-note"></p>
+      </div>
+    </div>
+
+    <div id="cursor-stack" aria-hidden="true"></div>
+    <div id="tooltip" role="tooltip"></div>
+    <div id="click-to-play" class="center-msg" hidden><span>Click to play</span></div>
+
+    <section id="title-screen" class="screen dirt" aria-labelledby="logo">
+      <div class="title-inner">
+        <h1 id="logo" class="logo">BLOCKCRAFT</h1>
+        <p class="splash">Wilderness Bound!</p>
+        <div class="menu-buttons">
+          <button class="mc-btn" type="button" data-go="worlds">Singleplayer</button>
+          <button class="mc-btn" type="button" data-go="settings">Options…</button>
+          <button class="mc-btn" type="button" data-go="help">How to Play</button>
+        </div>
+        <p class="footnote">A fan-made, Minecraft-style sandbox. Saves stay in this browser. Keyboard and mouse required.</p>
+      </div>
+    </section>
+
+    <section id="worlds-screen" class="screen dirt" hidden aria-labelledby="worlds-title">
+      <div class="screen-inner wide">
+        <h2 id="worlds-title">Select World</h2>
+        <ul id="world-list" class="world-list"></ul>
+        <form id="new-world" class="new-world" autocomplete="off">
+          <h3>Create New World</h3>
+          <label>World name <input id="nw-name" type="text" maxlength="32" value="New World"></label>
+          <label>Seed <input id="nw-seed" type="text" maxlength="24" placeholder="Leave blank for random"></label>
+          <fieldset class="mode-pick">
+            <legend>Game mode</legend>
+            <label><input type="radio" name="mode" value="survival" checked> Survival</label>
+            <label><input type="radio" name="mode" value="creative"> Creative</label>
+          </fieldset>
+          <div class="row">
+            <button class="mc-btn" type="submit">Create New World</button>
+            <button class="mc-btn" type="button" data-go="title">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="settings-screen" class="screen dirt" hidden aria-labelledby="settings-title">
+      <div class="screen-inner">
+        <h2 id="settings-title">Options</h2>
+        <div class="settings-grid">
+          <label>Render distance <output id="o-rd"></output><input id="s-rd" type="range" min="2" max="12" step="1"></label>
+          <label>Field of view <output id="o-fov"></output><input id="s-fov" type="range" min="50" max="110" step="1"></label>
+          <label>Mouse sensitivity <output id="o-sens"></output><input id="s-sens" type="range" min="0.2" max="3" step="0.05"></label>
+          <label>Brightness <output id="o-bright"></output><input id="s-bright" type="range" min="0" max="1" step="0.05"></label>
+          <label>Sound volume <output id="o-vol"></output><input id="s-vol" type="range" min="0" max="1" step="0.05"></label>
+          <label>Music volume <output id="o-mus"></output><input id="s-mus" type="range" min="0" max="1" step="0.05"></label>
+          <label class="check"><input id="s-safe" type="checkbox"> Safe graphics (fixes black screens; reloads)</label>
+          <label class="check"><input id="s-invert" type="checkbox"> Invert mouse</label>
+          <label class="check"><input id="s-clouds" type="checkbox"> Clouds</label>
+          <label class="check"><input id="s-bob" type="checkbox"> View bobbing</label>
+          <label class="check"><input id="s-peaceful" type="checkbox"> Peaceful (no monsters)</label>
+          <label class="check"><input id="s-keep" type="checkbox"> Keep inventory on death</label>
+        </div>
+        <button class="mc-btn" type="button" id="settings-done">Done</button>
+      </div>
+    </section>
+
+    <section id="help-screen" class="screen dirt" hidden aria-labelledby="help-title">
+      <div class="screen-inner wide">
+        <h2 id="help-title">How to Play</h2>
+        <div class="help-cols">
+          <table class="keys">
+            <tbody>
+              <tr><th>W A S D</th><td>Move (double-tap W, or hold R or Ctrl, to sprint)</td></tr>
+              <tr><th>Space</th><td>Jump / swim up (creative: double-tap to fly)</td></tr>
+              <tr><th>Shift</th><td>Sneak, fly down, stand up from a cushion</td></tr>
+              <tr><th>Left mouse</th><td>Mine blocks, attack</td></tr>
+              <tr><th>Right mouse</th><td>Place, use, eat (hold), sit, sleep</td></tr>
+              <tr><th>Middle mouse</th><td>Pick block (creative)</td></tr>
+              <tr><th>1–9 / wheel</th><td>Select hotbar slot</td></tr>
+              <tr><th>E</th><td>Inventory</td></tr>
+              <tr><th>Q</th><td>Drop item (Shift+Q: whole stack)</td></tr>
+              <tr><th>M</th><td>Map</td></tr>
+              <tr><th>F3</th><td>Debug info</td></tr>
+              <tr><th>F1</th><td>Hide HUD (screenshots)</td></tr>
+              <tr><th>Esc</th><td>Pause / close</td></tr>
+            </tbody>
+          </table>
+          <div class="help-text">
+            <h3>First day</h3>
+            <p>Punch a tree for logs, turn them into planks and a crafting table, then make a wooden pickaxe. Build a shelter and craft torches from coal and sticks before the first night: zombies and creepers come out in the dark.</p>
+            <h3>Wilderness Bound</h3>
+            <p>Look for the autumn-colored <b>Dappled Forest</b> near cold regions. Its tall <b>poplar</b> trees come in red, orange and yellow and drop leaves as you walk under them. Collect <b>shelf mushrooms</b> from poplar trunks and fallen logs for stew.</p>
+            <p><b>Abandoned camps</b> sit around a poplar ringed with fences: tents, a campfire with <b>cushions</b> you can sit on, barrels and a chest holding an <b>explorer map</b> to the next camp. Sleep through the night in a one-use <b>straw bed</b>. Wool and concrete now come in 16 colors, with slabs and stairs.</p>
+            <p>Inventory: click to pick up or place, right-click to split or place one, Shift-click to move quickly.</p>
+          </div>
+        </div>
+        <button class="mc-btn" type="button" data-go="back">Done</button>
+      </div>
+    </section>
+
+    <section id="pause-screen" class="screen dim" hidden aria-labelledby="pause-title">
+      <div class="screen-inner">
+        <h2 id="pause-title">Game Menu</h2>
+        <div class="menu-buttons">
+          <button class="mc-btn" type="button" id="btn-resume">Back to Game</button>
+          <button class="mc-btn" type="button" data-go="settings">Options…</button>
+          <button class="mc-btn" type="button" data-go="help">How to Play</button>
+          <button class="mc-btn" type="button" id="btn-quit">Save and Quit to Title</button>
+        </div>
+        <p class="footnote" id="pause-info"></p>
+      </div>
+    </section>
+
+    <section id="death-screen" class="screen death" hidden aria-labelledby="death-title">
+      <div class="screen-inner">
+        <h2 id="death-title">You Died!</h2>
+        <p id="death-cause"></p>
+        <div class="menu-buttons">
+          <button class="mc-btn" type="button" id="btn-respawn">Respawn</button>
+          <button class="mc-btn" type="button" id="btn-death-quit">Title Screen</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="loading-screen" class="screen dirt" hidden aria-live="polite">
+      <div class="screen-inner">
+        <h2 id="loading-title">Generating terrain</h2>
+        <div class="progress"><span id="loading-bar"></span></div>
+        <p id="loading-note"></p>
+      </div>
+    </section>
+
+    <noscript><p class="center-msg">Blockcraft needs JavaScript.</p></noscript>
+  </div>
+  <div id="boot-error" class="center-msg boot-error" hidden><p></p></div>
+  <script>
+    // If the game can't start (scripts blocked, no WebGL, an error), say so instead of
+    // leaving a dark screen.
+    window.showBootError = function (text) {
+      var box = document.getElementById('boot-error');
+      box.querySelector('p').textContent = text;
+      box.hidden = false;
+    };
+    document.getElementById('boot-error').addEventListener('click', function () {
+      if (window.game) this.hidden = true;
+    });
+    window.addEventListener('error', function (e) {
+      // Only scripts and script errors; a missing font stylesheet is harmless.
+      if (e.target && e.target.tagName && e.target.tagName !== 'SCRIPT') return;
+      if (!window.game) window.showBootError('The game failed to load: ' + (e.message || 'a script could not be loaded') + '. Try reloading the page.');
+    }, true);
+    setTimeout(function () {
+      if (!window.game && document.getElementById('boot-error').hidden) {
+        window.showBootError('The game is taking too long to load. If you are on a school or work network, it may be blocking the game files. Try reloading, or another network.');
+      }
+    }, 15000);
+  </script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
