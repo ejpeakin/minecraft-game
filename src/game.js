@@ -13,7 +13,7 @@ import { ViewModel } from './viewmodel.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { UI } from './ui.js';
-import { BLOCKS, SOLID } from './blocks.js';
+import { BLOCKS, SOLID, B } from './blocks.js';
 import { SMELTING, fuelValue, maxStack } from './items.js';
 import { seedFromString } from './noise.js';
 
@@ -144,6 +144,7 @@ export class Game {
     this.bindKeys();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    if (window.ResizeObserver) new ResizeObserver(() => this.resize()).observe(this.canvas);
     window.addEventListener('beforeunload', () => this.save());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.save();
@@ -179,9 +180,13 @@ export class Game {
     setEntityBrightness(this.settings.brightness);
   }
 
+  // Size the drawing buffer to the canvas as laid out. Some browsers report a zero or
+  // stale window size at startup, which leaves the 3D view blank, so this also runs
+  // from a ResizeObserver and a periodic check in the loop.
   resize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = Math.max(1, this.canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth);
+    const h = Math.max(1, this.canvas.clientHeight || window.innerHeight || document.documentElement.clientHeight);
+    this.viewSize = [w, h];
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -256,10 +261,16 @@ export class Game {
       Object.assign(this.player, this.worldSpawn);
     }
     this.saves.touch(id);
+    const failure = this.selfTest();
+    this.selfTestResult = failure ? 'failed' : 'passed';
     this.state = 'playing';
     this.ui.hideMenus();
     document.getElementById('hud').hidden = false;
     this.ui.toast(meta.mode === 'creative' ? 'Creative mode: double-tap Space to fly' : 'Punch a tree to get started. Press E for your inventory.', 4);
+    if (failure) {
+      this.reportProblem(`Graphics self-test failed: ${failure}.`);
+      if (!this.safe) return; // reloading into Safe graphics
+    }
     this.resume();
   }
 
@@ -347,7 +358,22 @@ export class Game {
     this.input.unlock();
     this.ui.show('pause');
     const meta = this.saves.meta(this.worldId);
-    document.getElementById('pause-info').textContent = meta ? `${meta.name} · seed ${meta.seed} · saved` : '';
+    const info = document.getElementById('pause-info');
+    info.style.whiteSpace = 'pre-line';
+    info.textContent = `${meta ? `${meta.name} · seed ${meta.seed} · saved` : ''}\n${this.diagnostics()}`;
+  }
+
+  // One line of graphics facts for the pause menu (and bug reports).
+  diagnostics() {
+    const gl = this.renderer.getContext();
+    const p = this.player;
+    const head = this.world ? this.world.getLight(Math.floor(p.x), Math.floor(p.y + p.eyeHeight), Math.floor(p.z)) : { sky: '-', block: '-' };
+    const r = this.renderer.info.render;
+    return [
+      `${this.safe ? 'Safe' : 'Standard'} graphics (WebGL ${this.renderer.capabilities.isWebGL2 ? 2 : 1}) · ${this.gpu}`,
+      `View ${this.canvas.clientWidth}×${this.canvas.clientHeight}, buffer ${gl.drawingBufferWidth}×${gl.drawingBufferHeight} · drawn ${r.calls} calls`,
+      `Y ${p.y.toFixed(1)} · light sky ${head.sky}, block ${head.block} · ${this.sky.daylight > 0.5 ? 'day' : 'night'}${this.selfTestResult ? ` · self-test ${this.selfTestResult}` : ''}`,
+    ].join('\n');
   }
 
   onPlayerDeath(cause) {
@@ -451,6 +477,7 @@ export class Game {
     this.last = now;
     this.fps += (1 / Math.max(dt, 1e-3) - this.fps) * 0.05;
     try {
+      if (this.viewSize && (this.canvas.clientWidth !== this.viewSize[0] || this.canvas.clientHeight !== this.viewSize[1]) && this.canvas.clientWidth > 0) this.resize();
       if (this.world && this.state !== 'loading') {
         this.update(dt);
         this.render();
@@ -509,12 +536,58 @@ export class Game {
 
   // Every two seconds in daylight under open sky, sample the top of the picture: it
   // should be sky. Three black samples in a row means nothing is reaching the screen.
+  // Draw a known picture and read it back: a cleared background, a plain colored square
+  // and a stone block through the world shader. Returns null if all three show up.
+  selfTest() {
+    const gl = this.renderer.getContext();
+    if (gl.isContextLost()) return 'the graphics context is lost';
+    this.resize();
+    const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+    if (W < 4 || H < 4) return `the 3D view has no size (${W}×${H})`;
+    const scene = new THREE.Scene();
+    const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+    cam.position.z = 5;
+    const plain = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    plain.position.x = -0.5;
+    const blockMat = this.chunkRenderer.entityMaterial();
+    blockMat.uniforms.uEntityLight.value.set(1, 0);
+    const block = new THREE.Mesh(this.chunkRenderer.blockGeometry(B.stone), blockMat);
+    block.scale.set(1.2, 1.2, 0.1);
+    block.position.set(0.5, -0.6, 0);
+    scene.add(plain, block);
+    const savedDaylight = this.chunkRenderer.shared.uDaylight.value;
+    const savedFar = this.chunkRenderer.shared.uFogFar.value;
+    const savedNear = this.chunkRenderer.shared.uFogNear.value;
+    this.chunkRenderer.shared.uDaylight.value = 1;
+    this.chunkRenderer.shared.uFogNear.value = 100;
+    this.chunkRenderer.shared.uFogFar.value = 200;
+    this.renderer.setClearColor(new THREE.Color().setRGB(0.2, 0.6, 0.4, THREE.SRGBColorSpace));
+    this.renderer.render(scene, cam);
+    const read = (fx, fy) => {
+      const px = new Uint8Array(4);
+      gl.readPixels(Math.floor(W * fx), Math.floor(H * fy), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return [px[0], px[1], px[2]];
+    };
+    const bg = read(0.02, 0.98), red = read(0.25, 0.5), stone = read(0.75, 0.5);
+    this.chunkRenderer.shared.uDaylight.value = savedDaylight;
+    this.chunkRenderer.shared.uFogNear.value = savedNear;
+    this.chunkRenderer.shared.uFogFar.value = savedFar;
+    plain.geometry.dispose();
+    plain.material.dispose();
+    blockMat.dispose();
+    const fmt = (c) => c.join(',');
+    if (Math.abs(bg[1] - 153) > 40) return `nothing reaches the screen (background ${fmt(bg)})`;
+    if (red[0] < 150 || red[1] > 80) return `plain shapes don't draw (got ${fmt(red)})`;
+    if (stone[0] + stone[1] + stone[2] < 60) return `blocks draw black (got ${fmt(stone)})`;
+    return null;
+  }
+
   checkBlackFrame(now) {
     if (this.blackReported || now - (this.lastBlackCheck ?? 0) < 2000 || this.state !== 'playing') return;
     this.lastBlackCheck = now;
     const p = this.player;
     const head = this.world.getLight(Math.floor(p.x), Math.floor(p.y + p.eyeHeight), Math.floor(p.z));
-    if (this.sky.daylight < 0.8 || head.sky < 15 || p.pitch < -0.2 || p.headInWater || p.headInLava) {
+    if (this.sky.daylight < 0.6 || head.sky < 12 || p.pitch < -0.6 || p.headInWater || p.headInLava) {
       this.blackCount = 0;
       return;
     }
