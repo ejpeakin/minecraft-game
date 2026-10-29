@@ -5,6 +5,10 @@ import * as THREE from './three.js';
 import { buildFigure } from './entities.js';
 import { RelaySocket, isRelayUrl } from './relay.js';
 
+// The game's own Apps Script relay (relay/Code.gs, deployed for Seton Catholic
+// accounts), used on GitHub Pages when Options leaves Server address empty.
+export const DEFAULT_SERVER = 'https://script.google.com/a/macros/setoncatholic.org/s/AKfycbx1Cftq4ROCI7eR7XJt8Bgl80Pnp3_ScwXocEPMnBkrqdtw45ptKq9TrALTRZeuOqbKFQ/exec';
+
 const SEND_INTERVAL = 0.1; // seconds between position updates
 const TIME_INTERVAL = 5; // seconds between the host's clock broadcasts
 
@@ -131,8 +135,9 @@ export class Net {
   serverUrl() {
     let base = String(this.game.settings.serverUrl ?? '').trim();
     if (!base) {
-      if (/\.github\.io$|claude\.ai$|claudeusercontent/.test(location.hostname) || location.protocol === 'file:') return null;
-      base = location.origin;
+      // Static hosts can't run server.js: use the built-in relay.
+      if (/\.github\.io$|claude\.ai$|claudeusercontent/.test(location.hostname) || location.protocol === 'file:') base = DEFAULT_SERVER;
+      else base = location.origin;
     }
     if (!/^[a-z]+:\/\//i.test(base)) base = `https://${base}`;
     if (isRelayUrl(base)) return base; // Google Apps Script relay: plain HTTPS
@@ -169,7 +174,7 @@ export class Net {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        reject(new Error('Couldn’t reach the server. Check the address and try again.'));
+        reject(new Error(ws.failReason ?? 'Couldn’t reach the server. Check the address and try again.'));
       };
       ws.onmessage = (e) => {
         let msg;
