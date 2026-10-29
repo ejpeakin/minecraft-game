@@ -3,6 +3,7 @@
 import * as THREE from './three.js';
 import { ITEMS } from './items.js';
 import { BLOCKS } from './blocks.js';
+import { itemGeometry } from './renderer.js';
 
 export class ViewModel {
   constructor(game) {
@@ -60,12 +61,11 @@ export class ViewModel {
       mesh.rotation.set(0.1, Math.PI / 4 + 0.3, 0);
       this.heldMesh = mesh;
     } else {
-      const tex = new THREE.CanvasTexture(this.game.bank.icon(key));
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), mat);
+      // Tools, food and other flat items are solid one-pixel-thick models.
+      const tile = this.game.bank.flatTile(key);
+      const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(tile ? itemGeometry(key, tile) : new THREE.PlaneGeometry(1, 1), mat);
+      mesh.scale.setScalar(0.42);
       mesh.rotation.set(0, -Math.PI / 2.6, 0.35);
       mesh.position.set(0.04, 0.05, 0);
       this.heldMesh = mesh;

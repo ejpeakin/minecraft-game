@@ -149,6 +149,11 @@ function leaves(t, rnd, base, holes = 0.22) {
   }
 }
 
+// Marks every opaque pixel as taking the biome color (alpha 254; see the chunk shader).
+function markTint(t) {
+  for (let i = 3; i < t.d.length; i += 4) if (t.d[i] === 255) t.d[i] = 254;
+}
+
 function bricksPattern(t, rnd, brick, mortar, bw = 8, bh = 4) {
   for (let y = 0; y < S; y++) {
     const row = Math.floor(y / bh);
@@ -190,12 +195,12 @@ export const DYE_COLORS = WOOL;
 const GEN = {
   stone(t, r) { noiseFill(t, r, STONE, 0.08); blobs(t, r, mul(STONE, 0.82), 6, 3, 6, 0.05); blobs(t, r, mul(STONE, 1.12), 4, 2, 4, 0.04); },
   dirt(t, r) { noiseFill(t, r, DIRT, 0.12); speckle(t, r, mul(DIRT, 0.7), 18); speckle(t, r, mul(DIRT, 1.25), 10); },
-  grass_top(t, r) { noiseFill(t, r, GRASS, 0.16); speckle(t, r, mul(GRASS, 0.75), 30); speckle(t, r, mul(GRASS, 1.2), 14); },
+  grass_top(t, r) { noiseFill(t, r, GRASS, 0.16); speckle(t, r, mul(GRASS, 0.75), 30); speckle(t, r, mul(GRASS, 1.2), 14); markTint(t); },
   grass_side(t, r) {
     GEN.dirt(t, r);
     for (let x = 0; x < S; x++) {
       const depth = 3 + (r() < 0.5 ? 1 : 0) + (r() < 0.25 ? 1 : 0);
-      for (let y = 0; y < depth; y++) t.set(x, y, mul(GRASS, 0.85 + r() * 0.3));
+      for (let y = 0; y < depth; y++) t.set(x, y, mul(GRASS, 0.85 + r() * 0.3), 254); // the green fringe takes the biome color
     }
   },
   grass_snow_side(t, r) {
@@ -232,7 +237,7 @@ const GEN = {
   oak_log(t, r) { logSide(t, r, [109, 85, 50], [76, 60, 34]); },
   oak_log_top(t, r) { logTop(t, r, [109, 85, 50], [182, 147, 90], [150, 118, 70]); },
   oak_planks(t, r) { planks(t, r, OAK); },
-  oak_leaves(t, r) { leaves(t, r, [58, 128, 34]); },
+  oak_leaves(t, r) { leaves(t, r, [58, 128, 34]); markTint(t); },
   birch_log(t, r) {
     noiseFill(t, r, [216, 215, 210], 0.05);
     for (let i = 0; i < 9; i++) {
@@ -353,6 +358,7 @@ const GEN = {
       const h = 5 + Math.floor(r() * 9);
       for (let k = 0; k < h; k++) t.set(x + (k > h * 0.6 && r() < 0.4 ? (i % 2 ? 1 : -1) : 0), 15 - k, mul(GRASS, 0.7 + r() * 0.4));
     }
+    markTint(t);
   },
   dandelion(t, r) {
     for (let y = 9; y < 16; y++) t.set(8, y, [60, 130, 40]);
@@ -1105,6 +1111,18 @@ export class TextureBank {
     }
     this.icons.set(name, c);
     return c;
+  }
+
+  // The 16x16 picture of an item that's drawn flat (tools, food, plants, torches,
+  // doors...), or null for items drawn as blocks.
+  flatTile(name) {
+    const flat = this.itemTiles.get(name);
+    if (flat) return flat;
+    const def = ITEMS[name];
+    const block = def?.block !== undefined ? BLOCKS[def.block] : null;
+    if (!block) return null;
+    const shape = SHAPES[block.id];
+    return shape === SHAPE.CROSS || shape === SHAPE.TORCH || shape === SHAPE.LADDER || shape === SHAPE.PANE ? this.tileCanvases.get(block.tex.side) : null;
   }
 
   iconUrl(name) {

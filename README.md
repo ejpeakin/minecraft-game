@@ -58,6 +58,13 @@ can, and click outside the window to throw the held stack.
   wind; water reflects the sky at low angles, ripples and catches sun glints; a glowing
   sun with sunsets that spread across the sky; two-layer clouds; flickering torch and
   campfire light; slightly richer color and a soft vignette.
+- **Weather**: rain and snow come and go (the same for every player in a multiplayer
+  game). Rain grays and darkens the sky, stops at roofs and trees, and sounds muffled
+  indoors; snow falls in cold biomes and high up.
+- **Minecraft touches**: grass and oak leaves change color with the biome (yellower
+  near deserts, bluer in the cold, warm in the Dappled Forest), sunlight turns warm at
+  sunrise and sunset and cool at night, creatures and dropped items cast soft round
+  shadows, and tools and items are solid pixel models in your hand and on the ground.
 - **Rendering**: per-chunk meshes with face culling, smooth lighting and ambient
   occlusion; flood-filled sky and block light (torches, glowstone, lava, campfires and
   lit furnaces glow); a day/night cycle with a sky gradient, sunsets, sun, moon, stars
@@ -204,6 +211,7 @@ src/
   mesher.js               Lighting flood fill and chunk geometry
   renderer.js             Chunk shader and meshes, selection, cracks, particles
   sky.js                  Day/night sky, sun, moon, stars, clouds
+  weather.js              Rain and snow
   physics.js              Swept AABB collision, step-up, raycasting
   player.js               Movement, vitals, mining, placing, using
   entities.js             Items, falling blocks, TNT, mobs, spawning, explosions

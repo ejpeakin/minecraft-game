@@ -2,7 +2,7 @@
 // sends this player's position, the block edits they make and chat; draws the
 // other players as figures with name tags and applies their edits to the world.
 import * as THREE from './three.js';
-import { buildFigure } from './entities.js';
+import { buildFigure, Shadow } from './entities.js';
 import { RelaySocket, isRelayUrl } from './relay.js';
 import { MqttSocket, isMqttUrl } from './mqtt.js';
 
@@ -59,6 +59,7 @@ class RemotePlayer {
     this.tag = nameTag(name);
     this.mesh.add(this.tag);
     game.scene.add(this.mesh);
+    this.shadow = new Shadow(game, 0.8);
     this.target = state ?? [0, -100, 0, 0, 0, 0];
     [this.x, this.y, this.z, this.yaw, this.pitch] = this.target;
     this.walk = 0;
@@ -110,10 +111,12 @@ class RemotePlayer {
     this.game.entities.applyLight(this.mesh, this.x, this.y + 1.5, this.z);
     if (this.hurt > 0) this.material.color.setRGB(1, 0.35, 0.35);
     this.tag.material.color.setScalar(1);
+    this.shadow.update(this.x, this.y, this.z);
   }
 
   dispose() {
     this.game.scene.remove(this.mesh);
+    this.shadow.dispose();
     this.material.dispose();
     this.tag.material.map.dispose();
     this.tag.material.dispose();
