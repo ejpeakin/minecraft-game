@@ -3,6 +3,7 @@
 // other players as figures with name tags and applies their edits to the world.
 import * as THREE from './three.js';
 import { buildFigure } from './entities.js';
+import { RelaySocket, isRelayUrl } from './relay.js';
 
 const SEND_INTERVAL = 0.1; // seconds between position updates
 const TIME_INTERVAL = 5; // seconds between the host's clock broadcasts
@@ -134,6 +135,7 @@ export class Net {
       base = location.origin;
     }
     if (!/^[a-z]+:\/\//i.test(base)) base = `https://${base}`;
+    if (isRelayUrl(base)) return base; // Google Apps Script relay: plain HTTPS
     const url = new URL(base);
     url.protocol = url.protocol === 'http:' || url.protocol === 'ws:' ? 'ws:' : 'wss:';
     url.pathname = '/ws';
@@ -144,12 +146,12 @@ export class Net {
   connect() {
     const url = this.serverUrl();
     if (!url) {
-      return Promise.reject(new Error('Multiplayer needs the Blockcraft server. Paste your server address (your Render link) into the Server box.'));
+      return Promise.reject(new Error('Multiplayer needs a server. Paste your Apps Script link (or Render address) into the Server address box.'));
     }
     this.leave();
     return new Promise((resolve, reject) => {
       let settled = false;
-      const ws = new WebSocket(url);
+      const ws = isRelayUrl(url) ? new RelaySocket(url, this) : new WebSocket(url);
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;

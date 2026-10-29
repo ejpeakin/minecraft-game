@@ -342,9 +342,12 @@ export class UI {
     const g = this.game;
     $('mp-name').value = g.settings.playerName;
     $('mp-server').value = g.settings.serverUrl;
-    $('mp-server-hint').textContent = g.net.serverUrl() && !g.settings.serverUrl
-      ? 'Using this page’s server. Friends open the same link to join.'
-      : 'Multiplayer runs on the Blockcraft server. Paste its address here (for example your-game.onrender.com).';
+    this.mpHint = () => {
+      $('mp-server-hint').textContent = g.net.serverUrl() && !g.settings.serverUrl
+        ? 'Using this page’s server. Friends open the same link to join.'
+        : 'Paste your game\u2019s server address: the Google Apps Script link (works at school) or a Render link. See the README for setup.';
+    };
+    this.mpHint();
     if (!this.mpBound) {
       this.mpBound = true;
       const saveFields = () => {
@@ -353,9 +356,10 @@ export class UI {
         g.applySettings();
       };
       $('mp-name').addEventListener('change', saveFields);
+      // Only refresh the hint: rebuilding the world list here would swallow a click on Host.
       $('mp-server').addEventListener('change', () => {
         saveFields();
-        this.renderMultiplayer();
+        this.mpHint();
       });
       $('mp-form').addEventListener('submit', async (e) => {
         e.preventDefault();
