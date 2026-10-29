@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockcraft Connection Test</title>
+<!-- Checks which multiplayer services this network lets through, so multiplayer can
+     be built on one that works (school networks block many of them). -->
+<style>
+  :root { --bg: #2b2118; --panel: #1c1611; --text: #eee; --dim: #b9b0a3; --ok: #7bd85a; --bad: #ff7a6b; --wait: #ffe066; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.4 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  p { color: var(--dim); margin: 0 0 16px; }
+  ul { list-style: none; padding: 0; margin: 0 0 18px; background: var(--panel); border: 2px solid #000; }
+  li { display: flex; gap: 12px; align-items: baseline; padding: 10px 14px; border-top: 1px solid #3a2f25; }
+  li:first-child { border-top: 0; }
+  .mark { width: 1.4em; flex: none; font-weight: 700; }
+  .name { flex: 1; }
+  .name small { display: block; color: var(--dim); font-size: 14px; }
+  .res { font-size: 15px; flex: none; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .wait { color: var(--wait); }
+  button { font: inherit; font-weight: 600; padding: 9px 22px; border: 2px solid #000; background: #6c9b3c; color: #fff; cursor: pointer; }
+  #summary { margin-top: 14px; padding: 10px 12px; background: var(--panel); border: 2px solid #000; font: 14px/1.4 ui-monospace, monospace; white-space: pre-wrap; color: var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Blockcraft connection test</h1>
+  <p>Checks which multiplayer services this network allows. Run it on the computer you
+    play on, at the place you play (for example at school). Takes about 10 seconds.</p>
+  <ul id="list"></ul>
+  <button id="again">Run again</button>
+  <div id="summary"></div>
+</main>
+<script>
+const TIMEOUT = 8000;
+
+// Each test resolves to a short result or throws. A blocked or filtered service fails:
+// a block page has no CORS header and can't complete a WebSocket handshake.
+function withTimeout(promise, ms = TIMEOUT) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('no answer')), ms))]);
+}
+
+function socketOpens(url, protocols) {
+  return new Promise((resolve, reject) => {
+    let ws;
+    try {
+      ws = new WebSocket(url, protocols);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    const t = setTimeout(() => { ws.close(); reject(new Error('no answer')); }, TIMEOUT);
+    ws.onopen = () => { clearTimeout(t); ws.close(); resolve('connects'); };
+    ws.onerror = () => { clearTimeout(t); reject(new Error('blocked')); };
+  });
+}
+
+async function corsFetch(url, check) {
+  const r = await withTimeout(fetch(url, { cache: 'no-store' }));
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const text = await r.text();
+  if (check && !check(text)) throw new Error('wrong answer');
+  return 'reachable';
+}
+
+// WebRTC: can this computer reach a STUN server over UDP (needed for direct connections)?
+function webrtc() {
+  return new Promise((resolve, reject) => {
+    if (!window.RTCPeerConnection) return reject(new Error('turned off'));
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    let host = false;
+    const done = (fn, v) => { clearTimeout(t); pc.close(); fn(v); };
+    const t = setTimeout(() => done(reject, new Error(host ? 'local only' : 'no answer')), 6000);
+    pc.onicecandidate = (e) => {
+      const c = e.candidate && e.candidate.candidate;
+      if (!c) return;
+      if (/ typ srflx /.test(c)) done(resolve, 'works');
+      else if (/ typ host /.test(c)) host = true;
+    };
+    pc.createDataChannel('x');
+    pc.createOffer().then((o) => pc.setLocalDescription(o)).catch((e) => done(reject, e));
+  });
+}
+
+const TESTS = [
+  { id: 'ws', name: 'WebSockets in general', note: 'echo.websocket.org', run: () => socketOpens('wss://echo.websocket.org') },
+  { id: 'mqtt-hivemq', name: 'HiveMQ public MQTT', note: 'broker.hivemq.com, port 8884', run: () => socketOpens('wss://broker.hivemq.com:8884/mqtt', ['mqtt']) },
+  { id: 'mqtt-emqx', name: 'EMQX public MQTT', note: 'broker.emqx.io, port 8084', run: () => socketOpens('wss://broker.emqx.io:8084/mqtt', ['mqtt']) },
+  { id: 'mqtt-shiftr', name: 'shiftr.io public MQTT', note: 'public.cloud.shiftr.io, port 443', run: () => socketOpens('wss://public.cloud.shiftr.io', ['mqtt']) },
+  { id: 'ably', name: 'Ably', note: 'rest.ably.io', run: () => corsFetch('https://rest.ably.io/time', (t) => /^\[\d+\]$/.test(t.trim())) },
+  { id: 'peerjs', name: 'PeerJS server', note: '0.peerjs.com', run: () => corsFetch('https://0.peerjs.com/peerjs/id?ts=' + Date.now()) },
+  { id: 'webrtc', name: 'WebRTC direct connections', note: 'STUN over UDP', run: webrtc },
+  { id: 'ntfy', name: 'ntfy.sh', note: 'ntfy.sh', run: () => corsFetch('https://ntfy.sh/v1/health', (t) => /healthy/.test(t)) },
+];
+
+const list = document.getElementById('list');
+const summary = document.getElementById('summary');
+
+async function runAll() {
+  list.innerHTML = '';
+  summary.textContent = 'Testing…';
+  const rows = TESTS.map((t) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="mark wait">…</span><span class="name"></span><span class="res wait">testing</span>';
+    li.querySelector('.name').innerHTML = t.name + '<small></small>';
+    li.querySelector('small').textContent = t.note;
+    list.append(li);
+    return li;
+  });
+  const results = await Promise.all(TESTS.map(async (t, i) => {
+    let ok = false, text;
+    try {
+      text = await t.run();
+      ok = true;
+    } catch (e) {
+      text = !e || e instanceof TypeError ? 'blocked' : e.message || 'blocked';
+    }
+    const li = rows[i];
+    li.querySelector('.mark').textContent = ok ? '✓' : '✗';
+    li.querySelector('.mark').className = 'mark ' + (ok ? 'ok' : 'bad');
+    li.querySelector('.res').textContent = text;
+    li.querySelector('.res').className = 'res ' + (ok ? 'ok' : 'bad');
+    return t.id + ': ' + (ok ? 'OK' : 'NO') + ' (' + text + ')';
+  }));
+  summary.textContent = 'Results (screenshot this or copy it to Claude):\n' + results.join('\n');
+}
+
+document.getElementById('again').onclick = runAll;
+runAll();
+</script>
+</body>
+</html>

@@ -126,6 +126,11 @@ minute. To run it on your own computer: `npm install`, then `npm start`.
 
 ### Multiplayer at school
 
+Not sure what your network allows? Open
+[`nettest.html`](https://ejpeakin.github.io/minecraft-game/nettest.html) on the computer
+you play on. It checks which multiplayer services get through in about 10 seconds.
+
+
 If your school network blocks Render, use Google Apps Script instead: a free script
 that runs on Google's own servers, which school Chromebooks can usually reach. Only the
 host needs to set it up, once:
