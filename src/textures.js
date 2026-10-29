@@ -780,6 +780,73 @@ const ITEM_GEN = {
     outline(t, [90, 56, 24]);
   },
   bucket(t) { bucketIcon(t, null); },
+  bow(t) {
+    for (let k = 0; k <= 16; k++) {
+      const s = k / 16;
+      const x = Math.round(3 + s * 10 + Math.sin(s * Math.PI) * 2.2);
+      const y = Math.round(13 - s * 10 + Math.sin(s * Math.PI) * 2.2);
+      t.set(x, y, s > 0.4 && s < 0.6 ? [70, 46, 22] : [132, 92, 48]);
+      t.set(x + 1, y, [96, 66, 32]);
+    }
+    line(t, 3, 12, 12, 3, [226, 226, 220]);
+    outline(t, [40, 26, 12]);
+  },
+  arrow(t) {
+    line(t, 3, 12, 11, 4, [120, 86, 44]);
+    fillPoly(t, [[10, 2.5], [13.5, 2.5], [13.5, 6], [12, 5], [11, 4]], [120, 120, 126]);
+    t.set(12, 3, [200, 200, 206]);
+    for (const [x, y] of [[2, 11], [3, 13], [1, 12], [4, 14], [2, 13]]) t.set(x, y, [236, 236, 230]);
+    outline(t, [30, 24, 20]);
+  },
+  string(t) {
+    for (let x = 2; x < 14; x++) t.set(x, Math.round(8 + Math.sin(x * 0.9) * 2.5), [236, 236, 236]);
+    outline(t, [90, 90, 90]);
+  },
+  bone(t) {
+    line(t, 4, 11, 11, 4, [238, 234, 222]); line(t, 5, 11, 11, 5, [214, 208, 192]);
+    for (const [x, y] of [[3, 11], [4, 12], [3, 12], [12, 4], [11, 3], [12, 3]]) t.set(x, y, [238, 234, 222]);
+    outline(t, [90, 86, 76]);
+  },
+  bone_meal(t, r) {
+    disc(t, 8, 9, 4.5, () => mul([238, 236, 228], 0.85 + r() * 0.2));
+    outline(t, [110, 108, 100]);
+  },
+  milk_bucket(t) { bucketIcon(t, [246, 246, 240]); },
+  leather(t, r) {
+    fillPoly(t, [[3, 3], [12, 2], [14, 7], [12, 13], [5, 14], [2, 9]], (x, y) => mul((x + y) % 4 === 0 ? [140, 82, 46] : [166, 100, 56], 0.9 + r() * 0.15));
+    outline(t, [70, 40, 20]);
+  },
+  beef(t) { meat(t, [214, 70, 66], [160, 40, 40]); },
+  cooked_beef(t) { meat(t, [132, 78, 46], [96, 52, 30]); },
+  chicken(t) {
+    fillPoly(t, [[4, 4], [11, 3], [13, 8], [10, 12], [5, 11]], (x, y) => (x + y > 15 ? [226, 170, 150] : [244, 196, 176]));
+    line(t, 10, 11, 13, 14, [236, 230, 214]); t.set(13, 14, [250, 250, 240]); t.set(14, 13, [250, 250, 240]);
+    outline(t, [120, 70, 60]);
+  },
+  cooked_chicken(t) {
+    fillPoly(t, [[4, 4], [11, 3], [13, 8], [10, 12], [5, 11]], (x, y) => (x + y > 15 ? [170, 104, 52] : [204, 138, 72]));
+    line(t, 10, 11, 13, 14, [236, 230, 214]); t.set(13, 14, [250, 250, 240]); t.set(14, 13, [250, 250, 240]);
+    outline(t, [90, 52, 24]);
+  },
+  feather(t) {
+    line(t, 3, 13, 12, 3, [210, 210, 204]);
+    for (let k = 0; k < 7; k++) { t.set(5 + k, 9 - k, [240, 240, 236]); t.set(6 + k, 10 - k, [246, 246, 242]); t.set(4 + k, 9 - k, [226, 226, 220]); }
+    outline(t, [110, 110, 106]);
+  },
+  egg(t) {
+    for (let y = 3; y < 14; y++) for (let x = 3; x < 13; x++) {
+      const dx = (x + 0.5 - 8) / 4.6, dy = (y + 0.5 - 8.6) / (y < 8 ? 5.4 : 4.8);
+      if (dx * dx + dy * dy <= 1) t.set(x, y, x + y < 12 ? [250, 242, 222] : [228, 212, 180]);
+    }
+    outline(t, [120, 100, 70]);
+  },
+  shears(t) {
+    line(t, 4, 3, 10, 9, [216, 216, 220]); line(t, 5, 3, 11, 9, [170, 170, 176]);
+    line(t, 11, 3, 5, 9, [216, 216, 220]); line(t, 12, 3, 6, 9, [170, 170, 176]);
+    disc(t, 4.5, 11.5, 2, [60, 60, 66]); disc(t, 11.5, 11.5, 2, [60, 60, 66]);
+    t.set(4, 11, [0, 0, 0], 0); t.set(11, 11, [0, 0, 0], 0);
+    outline(t, [30, 30, 34]);
+  },
   water_bucket(t) { bucketIcon(t, [52, 92, 224]); },
   lava_bucket(t) { bucketIcon(t, [230, 110, 30]); },
   red_bed(t) {
@@ -789,6 +856,35 @@ const ITEM_GEN = {
   },
   explorer_map(t) { mapIcon(t, true); },
 };
+
+// Armor icons from pixel maps: X outline, l light, m middle, d dark.
+const ARMOR_MAPS = {
+  helmet: [
+    '................', '................', '................', '................',
+    '....XXXXXXXX....', '...XllllllmmX...', '..XllmmmmmmmdX..', '..XlmXXXXXXmdX..',
+    '..XmdX....XmdX..', '..XmdX....XmdX..', '..XXXX....XXXX..',
+  ],
+  chestplate: [
+    '................', '..XXX......XXX..', '.XlmmX....XmmdX.', '.XlmmXXXXXXmmdX.',
+    '.XlmmmmmmmmmmdX.', '.XXXlmmmmmmmXXX.', '...XlmmmmmmdX...', '...XlmmmmmmdX...',
+    '...XlmmmmmmdX...', '...XlmmmmmmdX...', '...XmmmmmmmdX...', '...XXXXXXXXXX...',
+  ],
+  leggings: [
+    '................', '................', '...XXXXXXXXXX...', '...XllllmmmmX...',
+    '...XlmmmmmmdX...', '...XlmdXXlmdX...', '...XlmdXXlmdX...', '...XlmdXXlmdX...',
+    '...XlmdXXlmdX...', '...XlmdXXlmdX...', '...XlmdXXlmdX...', '...XXXXXXXXXX...',
+  ],
+  boots: [
+    '................', '................', '................', '................',
+    '................', '..XXXX....XXXX..', '..XlmX....XlmX..', '..XlmX....XlmX..',
+    '.XlmmX...XlmmX..', 'XlmmdX..XlmmdX..', 'XXXXXX..XXXXXX..',
+  ],
+};
+const ARMOR_COLOR = { leather: [160, 100, 56], golden: [250, 214, 64], iron: [216, 216, 222], diamond: [86, 222, 212] };
+function armorIcon(t, piece, base) {
+  const pal = { X: mul(base, 0.32), l: mul(base, 1.22), m: base, d: mul(base, 0.72) };
+  ARMOR_MAPS[piece].forEach((row, y) => [...row].forEach((ch, x) => { if (pal[ch]) t.set(x, y + 2, pal[ch]); }));
+}
 
 function bucketIcon(t, fill) {
   fillPoly(t, [[3, 5], [13, 5], [11.5, 14], [4.5, 14]], (x, y) => (x < 7 ? [216, 216, 220] : x > 10 ? [150, 150, 158] : [190, 190, 196]));
@@ -823,6 +919,9 @@ function mapIcon(t, explorer) {
 
 for (const [tier, mat] of Object.entries(TIER_COLOR)) {
   for (const type of ['pickaxe', 'axe', 'shovel', 'sword', 'hoe']) ITEM_GEN[`${tier}_${type}`] = (t) => tool(t, type, mat);
+}
+for (const [mat, color] of Object.entries(ARMOR_COLOR)) {
+  for (const piece of Object.keys(ARMOR_MAPS)) ITEM_GEN[`${mat}_${piece}`] = (t) => armorIcon(t, piece, color);
 }
 // A door item is the whole door, squeezed into the middle of the icon.
 for (const wood of Object.keys(WOOD_COLOR)) {
@@ -1069,11 +1168,13 @@ export function hudIcon(kind) {
     heart: ['..XX.XX..', '.XrrXrrX.', 'XrwrrrrrX', 'XrrrrrrrX', 'XrrrrrrrX', '.XrrrrrX.', '..XrrrX..', '...XrX...', '....X....'],
     food: ['....XXX..', '...XmmmX.', '..XmlmmmX', '..XmmmmmX', '..XmmmmX.', '.XXXXXX..', 'XbX......', 'XbbX.....', '.XX......'],
     air: ['..XXXX...', '.XwwbbX..', 'XwbbbbbX.', 'XbbbbbbX.', 'XbbbbbbX.', 'XbbbbbbX.', '.XbbbbX..', '..XXXX...', '.........'],
+    armor: ['.XX...XX.', 'XllX.XmdX', 'XlmmXmmdX', 'XlmmmmmdX', '.XlmmmmX.', '.XlmmmdX.', '.XlmmmdX.', '.XmmmmdX.', '..XXXXX..'],
   };
   const pal = {
     heart: { X: [40, 10, 10], r: [220, 30, 30], w: [255, 200, 200] },
     food: { X: [50, 30, 10], m: [180, 110, 50], l: [220, 160, 90], b: [235, 225, 205] },
     air: { X: [20, 40, 90], w: [255, 255, 255], b: [80, 150, 240] },
+    armor: { X: [30, 30, 34], l: [236, 236, 240], m: [196, 196, 204], d: [136, 136, 146] },
   };
   const make = (variant) => {
     const c = document.createElement('canvas');

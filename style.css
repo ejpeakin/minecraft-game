@@ -66,7 +66,7 @@ button, input, select { font: inherit; }
 .bar-row { display: flex; justify-content: space-between; }
 .icons { display: flex; gap: 0; height: 18px; }
 .icons.right { flex-direction: row-reverse; }
-#air { justify-content: flex-end; flex-direction: row-reverse; align-self: flex-end; }
+#air { justify-content: flex-end; flex-direction: row-reverse; }
 .icons img { width: 18px; height: 18px; margin-right: -2px; image-rendering: pixelated; }
 .icons.right img { margin-right: 0; margin-left: -2px; }
 .icons.shake img:nth-child(odd) { transform: translateY(-2px); }
@@ -107,6 +107,10 @@ button, input, select { font: inherit; }
 .slot.big { width: 52px; height: 52px; }
 .slot.big .item { inset: 10px; }
 .inv-top { display: flex; gap: 22px; align-items: center; justify-content: center; margin-bottom: 10px; min-height: 120px; }
+.armor-grid { grid-template-columns: 36px; margin-right: -16px; }
+/* Empty armor slots show a faint outline of the piece they take. */
+.armor-grid .slot:empty::before { content: ''; position: absolute; inset: 8px; opacity: 0.35; background: #373737;
+  -webkit-mask: var(--piece) center / contain no-repeat; mask: var(--piece) center / contain no-repeat; }
 .craft { display: flex; align-items: center; gap: 14px; }
 .arrow { width: 44px; height: 30px; position: relative; }
 .arrow::before { content: ''; position: absolute; left: 0; top: 11px; width: 28px; height: 8px; background: #8b8b8b; }

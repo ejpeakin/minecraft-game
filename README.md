@@ -75,8 +75,19 @@ can, and click outside the window to throw the held stack.
   water and lava; a red bed that sets your respawn point.
 - **Farming**: till grass with a hoe, plant wheat seeds (from tall grass), and harvest
   ripe wheat for bread and hay bales. Crops grow faster near water.
-- **Mobs**: pigs and sheep by day; zombies (burn in sunlight) and creepers (they swell,
-  hiss and explode) wherever it's dark.
+- **Animals**: pigs, sheep, cows and chickens with Minecraft-style models. They look at
+  you, follow you when you hold their food and breed when fed (wheat; seeds for
+  chickens), and babies grow up. Milk cows with a bucket; shear sheep for wool, dye them,
+  and watch them eat grass to grow it back; chickens lay eggs and flutter down instead of
+  falling. Animals are saved with the world.
+- **Monsters**: zombies and skeletons (both burn in sunlight; skeletons keep their
+  distance and shoot arrows), spiders (they climb walls, leap, and leave you alone in
+  daylight unless you hit them) and creepers (they swell, hiss and explode) wherever
+  it's dark.
+- **Gear**: leather, iron, gold and diamond armor in four slots, with Minecraft's armor
+  points and damage reduction (falls and drowning go straight through) and an armor bar;
+  a bow that draws while you hold right-click and zooms in, with arrows you can pick
+  back up; shears; bone meal that grows crops, saplings and grass.
 - **Creative**: flying, instant breaking and a searchable palette of every item.
 - **Saving**: worlds are stored in `localStorage` as edits on top of the seed. Several
   worlds can be kept; the game autosaves every 30 seconds, on pause and when you leave.

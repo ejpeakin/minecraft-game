@@ -43,7 +43,22 @@ export function addToSlots(slots, src, order = null) {
 export class Inventory {
   constructor() {
     this.slots = new Array(SLOTS).fill(null);
+    this.armor = [null, null, null, null]; // helmet, chestplate, leggings, boots
     this.selected = 0;
+  }
+
+  // Take n of an item from anywhere in the inventory; returns how many were taken.
+  take(id, n = 1) {
+    let taken = 0;
+    for (let i = 0; i < this.slots.length && taken < n; i++) {
+      const s = this.slots[i];
+      if (s?.id !== id) continue;
+      const k = Math.min(n - taken, s.count);
+      s.count -= k;
+      taken += k;
+      if (s.count <= 0) this.slots[i] = null;
+    }
+    return taken;
   }
 
   get held() {
@@ -90,16 +105,21 @@ export class Inventory {
 
   clear() {
     this.slots.fill(null);
+    this.armor.fill(null);
   }
 
   serialize() {
-    return { slots: this.slots.map(cloneStack), selected: this.selected };
+    return { slots: this.slots.map(cloneStack), armor: this.armor.map(cloneStack), selected: this.selected };
   }
 
   load(data) {
     this.slots = new Array(SLOTS).fill(null);
     (data?.slots ?? []).forEach((s, i) => {
       if (s && ITEMS[s.id] && i < SLOTS) this.slots[i] = s;
+    });
+    this.armor = [0, 1, 2, 3].map((i) => {
+      const s = data?.armor?.[i];
+      return s && ITEMS[s.id]?.armor?.slot === i ? s : null;
     });
     this.selected = data?.selected ?? 0;
   }

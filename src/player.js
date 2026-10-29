@@ -6,7 +6,7 @@ import { ITEMS, breakTime, toolOf, attackDamage, SMELTING } from './items.js';
 import { Inventory } from './inventory.js';
 import { moveEntity, fluidIn, raycast, touchesBlock } from './physics.js';
 import { canPlantOn } from './world.js';
-import { PrimedTNT } from './entities.js';
+import { PrimedTNT, Arrow } from './entities.js';
 import { HEIGHT } from './worldgen.js';
 
 const GRAVITY = 32;
@@ -14,6 +14,9 @@ const WALK = 4.317;
 const SPRINT = 5.612;
 const SNEAK = 1.31;
 const FLY = 10.9;
+
+// Damage that armor protects against (falls, drowning, starving and the void bypass it).
+const ARMOR_STOPS = new Set(['zombie', 'skeleton', 'spider', 'arrow', 'explosion', 'player', 'cactus', 'lava']);
 
 export class Player {
   constructor(game) {
@@ -176,7 +179,7 @@ export class Player {
     let speed = this.flying ? (this.sprinting ? FLY * 2 : FLY) : this.sneaking ? SNEAK : this.sprinting ? SPRINT : WALK;
     if (this.inWater && !this.flying) speed = this.sprinting ? 3.2 : 2.2;
     if (this.inLava && !this.flying) speed = 1.2;
-    if (this.eating > 0) speed *= 0.35;
+    if (this.eating > 0 || this.drawing > 0) speed *= 0.35;
     const len = Math.hypot(fwd, strafe) || 1;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wx = ((-sin * fwd + cos * strafe) / len) * speed;
@@ -318,9 +321,38 @@ export class Player {
     }
   }
 
+  // Armor points from everything worn (20 is full diamond).
+  get armorPoints() {
+    return this.inventory.armor.reduce((n, s) => n + (s ? ITEMS[s.id].armor.points : 0), 0);
+  }
+
   damage(amount, src = {}) {
     if (this.dead || this.mode === 'creative' || amount <= 0) return;
     if (this.invuln > 0 && src.cause !== 'drown' && src.cause !== 'starve') return;
+    const points = this.armorPoints;
+    if (points && ARMOR_STOPS.has(src.cause)) {
+      // Minecraft's armor formula, then every piece wears a little.
+      amount *= 1 - Math.min(20, Math.max(points / 5, points - amount / 2)) / 25;
+      const wear = Math.max(1, Math.floor(amount / 4));
+      const armor = this.inventory.armor;
+      for (let i = 0; i < 4; i++) {
+        if (!armor[i]) continue;
+        armor[i].dmg = (armor[i].dmg ?? 0) + wear;
+        if (armor[i].dmg >= ITEMS[armor[i].id].durability) {
+          armor[i] = null;
+          this.game.audio.block('glass', 'break');
+        }
+      }
+      // Fractions of a point add up across hits.
+      this.armorCarry = (this.armorCarry ?? 0) + amount - Math.floor(amount);
+      amount = Math.floor(amount);
+      if (this.armorCarry >= 1) { amount += 1; this.armorCarry -= 1; }
+      if (amount <= 0) {
+        this.invuln = 0.5;
+        this.game.audio.hurt();
+        return;
+      }
+    }
     this.health -= amount;
     this.invuln = 0.5;
     this.hurtFlash = 1;
@@ -345,8 +377,7 @@ export class Player {
     this.deathCause = cause;
     this.mining = null;
     if (!this.game.settings.keepInventory) {
-      for (let i = 0; i < this.inventory.slots.length; i++) {
-        const s = this.inventory.slots[i];
+      for (const s of [...this.inventory.slots, ...this.inventory.armor]) {
         if (s) this.game.entities.dropItem(this.x, this.y + 1, this.z, s, [(Math.random() - 0.5) * 6, 3 + Math.random() * 3, (Math.random() - 0.5) * 6]);
       }
       this.inventory.clear();
@@ -419,10 +450,17 @@ export class Player {
       this.mining = null;
     }
 
-    // Right: use.
-    if (input.mouse[2]) {
+    // Right: use. A bow draws while held and shoots on release.
+    const bow = ITEMS[this.held?.id]?.bow && (this.mode === 'creative' || this.inventory.count('arrow') > 0);
+    if (input.mouse[2] && bow) {
+      this.drawing = Math.min(1.5, (this.drawing ?? 0) + dt);
+      this.eating = 0;
+    } else if (this.drawing > 0) {
+      if (bow) this.shoot();
+      this.drawing = 0;
+    } else if (input.mouse[2]) {
       const food = ITEMS[this.held?.id]?.food;
-      if (food && (this.food < 20 || this.mode === 'creative') && !(this.target && this.canInteract(this.target) && !this.sneaking)) {
+      if (food && (this.food < 20 || this.mode === 'creative' || food.always) && !(this.target && this.canInteract(this.target) && !this.sneaking)) {
         this.eat(dt, food);
       } else {
         this.eating = 0;
@@ -541,6 +579,8 @@ export class Player {
     const item = held ? ITEMS[held.id] : null;
     const t = this.target;
 
+    // Animals first: feeding, milking, shearing, dyeing.
+    if (this.targetMob?.interact?.(this, held)) return true;
     if (t && !this.sneaking && this.canInteract(t)) {
       return this.interact(t);
     }
@@ -549,6 +589,13 @@ export class Player {
       return true;
     }
     if (item?.bucket) return this.useBucket(item);
+    if (item?.armor && !this.inventory.armor[item.armor.slot]) {
+      this.inventory.armor[item.armor.slot] = held;
+      this.inventory.held = null;
+      game.audio.block('cloth', 'place');
+      return true;
+    }
+    if (t && item?.fertilizer) return this.fertilize(t);
     if (t && item?.tool?.type === 'hoe') return this.till(t);
     if (t && item?.plants) {
       // Seeds go on top of farmland.
@@ -657,6 +704,56 @@ export class Player {
     return true;
   }
 
+  // Release a drawn bow: the longer the draw (up to a second), the faster and harder
+  // the arrow, like Minecraft's power curve.
+  shoot() {
+    const game = this.game;
+    const t = Math.min(1, this.drawing);
+    const power = Math.min(1, (t * t + 2 * t) / 3);
+    if (power < 0.1) return;
+    const survival = this.mode === 'survival';
+    if (survival && !this.inventory.take('arrow', 1)) return;
+    const [dx, dy, dz] = this.lookDir();
+    const speed = 48 * power;
+    const damage = Math.ceil(power * 6) + (power >= 1 && Math.random() < 0.25 ? 2 : 0);
+    const ex = this.x + dx * 0.5, ey = this.y + this.eyeHeight - 0.1 + dy * 0.5, ez = this.z + dz * 0.5;
+    game.entities.add(new Arrow(game, ex, ey, ez, dx * speed + this.vx, dy * speed + this.vy * 0.3, dz * speed + this.vz, { shooter: this, damage, pickup: survival }));
+    game.audio.bow(this, this);
+    this.swing = 1;
+    if (survival && this.inventory.damageHeld(1)) game.audio.block('glass', 'break');
+  }
+
+  // Bone meal: grows a crop a few stages, may grow a sapling, or sprouts grass and
+  // flowers around a grass block.
+  fertilize(t) {
+    const game = this.game;
+    const world = game.world;
+    const b = t.block;
+    let done = false;
+    if (b.crop >= 0 && b.crop < 7) {
+      world.setBlock(t.x, t.y, t.z, B[`wheat_${Math.min(7, b.crop + 2 + Math.floor(Math.random() * 3))}`]);
+      done = true;
+    } else if (b.sapling) {
+      if (Math.random() < 0.45) world.growSapling(t.x, t.y, t.z, b.sapling);
+      done = true;
+    } else if (t.id === B.grass && world.getBlock(t.x, t.y + 1, t.z) === 0) {
+      for (let i = 0; i < 12; i++) {
+        const x = t.x + Math.round((Math.random() - 0.5) * 6), z = t.z + Math.round((Math.random() - 0.5) * 6);
+        for (const y of [t.y + 1, t.y, t.y + 2, t.y - 1]) {
+          if (world.getBlock(x, y - 1, z) !== B.grass || world.getBlock(x, y, z) !== 0) continue;
+          const r = Math.random();
+          world.setBlock(x, y, z, r < 0.75 ? B.tall_grass : r < 0.88 ? B.dandelion : B.poppy);
+          break;
+        }
+      }
+      done = true;
+    }
+    if (!done) return false;
+    game.particles.burst(t.x, t.y + 0.5, t.z, [0.45, 0.85, 0.35], 10);
+    if (this.mode === 'survival') this.inventory.consumeHeld(1);
+    return true;
+  }
+
   // Buckets scoop up a water or lava source and pour it out again.
   useBucket(item) {
     const game = this.game;
@@ -670,15 +767,7 @@ export class Player {
       const kind = FLUID[hit.id] === 1 ? 'water' : 'lava';
       world.setBlock(hit.x, hit.y, hit.z, 0);
       game.audio.splash(hit, this);
-      if (survival) {
-        const filled = { id: `${kind}_bucket`, count: 1 };
-        if (this.held.count === 1) this.inventory.held = filled;
-        else {
-          this.inventory.consumeHeld(1);
-          const left = this.inventory.add(filled);
-          if (left) game.entities.dropItem(this.x, this.y + 1, this.z, left);
-        }
-      }
+      if (survival) this.exchangeHeld({ id: `${kind}_bucket`, count: 1 });
       return true;
     }
     const t = this.target;
@@ -692,6 +781,18 @@ export class Player {
     game.audio.splash({ x: px, y: py, z: pz }, this);
     if (survival) this.inventory.held = { id: 'bucket', count: 1 };
     return true;
+  }
+
+  // Swap one of the held item for another (a bucket for a filled bucket); in creative
+  // the held item stays and the new one is added.
+  exchangeHeld(stack) {
+    if (this.mode === 'survival' && this.held?.count === 1) {
+      this.inventory.held = stack;
+      return;
+    }
+    if (this.mode === 'survival') this.inventory.consumeHeld(1);
+    const left = this.inventory.add(stack);
+    if (left) this.game.entities.dropItem(this.x, this.y + 1, this.z, left);
   }
 
   blocksEntity(x, y, z) {

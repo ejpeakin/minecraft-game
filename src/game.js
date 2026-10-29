@@ -244,6 +244,7 @@ export class Game {
       else this.entities.dropBlockItems(x, y, z, blockId, { type: BLOCKS[blockId].tool, level: 3, speed: 1 });
     };
     this.worldSpawn = save?.spawn ?? this.world.gen.findSpawn();
+    this.entities.loadAnimals(save?.animals);
     this.player.reset();
     this.player.mode = meta.mode;
     this.player.inventory.clear();
@@ -325,6 +326,7 @@ export class Game {
       world: { ...this.world.serialize(), markers: this.world.markers ?? [] },
       player: this.player.serialize(),
       spawn: this.worldSpawn,
+      animals: this.entities.serializeAnimals(),
     };
   }
 
@@ -453,6 +455,7 @@ export class Game {
       player: `were slain by ${this.player.lastAttacker ?? 'another player'}`,
       fall: 'fell from a high place', lava: 'tried to swim in lava', drown: 'drowned', zombie: 'was slain by a Zombie',
       explosion: 'blew up', cactus: 'was pricked to death', starve: 'starved to death', void: 'fell out of the world',
+      arrow: 'was shot by a Skeleton', skeleton: 'was shot by a Skeleton', spider: 'was slain by a Spider',
     };
     document.getElementById('death-cause').textContent = `You ${msgs[cause] ?? 'died'}.`;
     this.state = 'dead';
@@ -878,6 +881,7 @@ export class Game {
     if (p.sprinting) fov *= 1.12;
     if (p.flying && p.sprinting) fov *= 1.05;
     if (p.headInWater) fov *= 0.92;
+    if (p.drawing > 0) fov *= 1 - Math.min(1, p.drawing) * 0.15; // a drawn bow zooms in
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 10);
     cam.updateProjectionMatrix();
   }
