@@ -65,9 +65,16 @@ can, and click outside the window to throw the held stack.
 - **Blocks with rules**: water and lava flow and level out, water sources refill between
   two sources, lava and water make obsidian or cobblestone, sand and gravel fall, plants
   and torches need support, saplings grow into trees.
+- **Building**: doors and trapdoors that open, ladders you can climb, glass panes and
+  iron bars that join up, fences and fence gates, carpets, and slabs and stairs in a
+  dozen materials. Slabs go on the top or bottom half and stack into a double slab;
+  stairs turn upside down when placed high on a wall.
 - **Survival**: health, hunger with saturation, air underwater, fall damage, lava,
   cactus, drowning and starvation; tools with tiers, speeds and durability; 100+ crafting
-  recipes on a 2×2 or 3×3 grid; furnace smelting with fuel; chests; TNT.
+  recipes on a 2×2 or 3×3 grid; furnace smelting with fuel; chests; TNT; buckets for
+  water and lava; a red bed that sets your respawn point.
+- **Farming**: till grass with a hoe, plant wheat seeds (from tall grass), and harvest
+  ripe wheat for bread and hay bales. Crops grow faster near water.
 - **Mobs**: pigs and sheep by day; zombies (burn in sunlight) and creepers (they swell,
   hiss and explode) wherever it's dark.
 - **Creative**: flying, instant breaking and a searchable palette of every item.
