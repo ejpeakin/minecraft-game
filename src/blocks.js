@@ -8,14 +8,16 @@ export const FACES = [
   [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
 ];
 
-// Facing values for blocks with a front (furnace, chest, stairs, shelf mushrooms):
-// 0 = +z (south), 1 = -x (west), 2 = -z (north), 3 = +x (east). Maps to a face index.
+// Facing values for blocks with a front (furnace, chest, stairs, shelf mushrooms,
+// doors): 0 = +z (south), 1 = -x (west), 2 = -z (north), 3 = +x (east). Maps to a
+// face index.
 export const FACING_FACE = [4, 1, 5, 0];
 export const FACING_DIR = [[0, 1], [-1, 0], [0, -1], [1, 0]];
 
 export const SHAPE = {
   NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, CACTUS: 4, LIQUID: 5,
   SLAB: 6, STAIRS: 7, CUSHION: 8, BED: 9, FENCE: 10, CAMPFIRE: 11, SHELF: 12,
+  DOOR: 13, TRAPDOOR: 14, LADDER: 15, PANE: 16, GATE: 17, CARPET: 18,
 };
 export const PASS = { OPAQUE: 0, CUTOUT: 1, WATER: 2 };
 
@@ -126,12 +128,61 @@ def('oak_stairs', { label: 'Oak Stairs', tex: 'oak_planks', shape: 'stairs', ...
 def('cobblestone_slab', { label: 'Cobblestone Slab', tex: 'cobblestone', shape: 'slab', ...PARTIAL, hardness: 2, ...STONE });
 def('cobblestone_stairs', { label: 'Cobblestone Stairs', tex: 'cobblestone', shape: 'stairs', ...PARTIAL, hardness: 2, ...STONE, variants: 'facing' });
 
+// --- Building ----------------------------------------------------------------------
+// Doors are two blocks (the top half has its own id); doors, trapdoors and fence
+// gates open with a right click. Their variants pack facing + 4 * open (+ 8 * top half
+// for trapdoors).
+export const WOODS = [['oak', 'Oak'], ['birch', 'Birch'], ['spruce', 'Spruce'], ['poplar', 'Poplar']];
+const DOOR = { shape: 'door', ...PARTIAL, pass: 'cutout', hardness: 3, ...WOOD, variants: 'door', interact: 'door' };
+for (const [wood, label] of WOODS) {
+  def(`${wood}_door`, { label: `${label} Door`, tex: `${wood}_door_bottom`, ...DOOR, door: 'lower', fuel: 10 });
+  def(`${wood}_door_top`, { label: `${label} Door`, tex: `${wood}_door_top`, ...DOOR, door: 'upper', noItem: true, drop: null });
+  def(`${wood}_trapdoor`, { label: `${label} Trapdoor`, tex: `${wood}_trapdoor`, shape: 'trapdoor', ...PARTIAL, pass: 'cutout', hardness: 3, ...WOOD, variants: 'trapdoor', interact: 'door', fuel: 15 });
+}
+for (const [wood, label] of WOODS) {
+  if (wood === 'birch' || wood === 'spruce') def(`${wood}_fence`, { label: `${label} Fence`, tex: `${wood}_planks`, shape: 'fence', ...PARTIAL, hardness: 2, fuel: 15, ...WOOD, fence: true });
+  def(`${wood}_fence_gate`, { label: `${label} Fence Gate`, tex: `${wood}_planks`, shape: 'gate', ...PARTIAL, hardness: 2, fuel: 15, ...WOOD, variants: 'gate', interact: 'door', fence: true });
+}
+def('ladder', { label: 'Ladder', tex: 'ladder', shape: 'ladder', solid: false, ...PARTIAL, pass: 'cutout', hardness: 0.4, fuel: 15, ...WOOD, variants: 'facing', climbable: true });
+def('glass_pane', { label: 'Glass Pane', tex: 'glass', shape: 'pane', ...PARTIAL, pass: 'cutout', hardness: 0.3, sound: 'glass', drop: null, pane: true });
+def('iron_bars', { label: 'Iron Bars', tex: 'iron_bars', shape: 'pane', ...PARTIAL, pass: 'cutout', hardness: 5, ...STONE, pane: true });
+for (const [color, label] of COLORS) {
+  def(`${color}_carpet`, { label: `${label} Carpet`, tex: `${color}_wool`, shape: 'carpet', ...PARTIAL, hardness: 0.1, sound: 'cloth', carpet: true });
+}
+def('stone_slab', { label: 'Stone Slab', tex: 'stone', shape: 'slab', ...PARTIAL, hardness: 1.5, ...STONE });
+def('stone_stairs', { label: 'Stone Stairs', tex: 'stone', shape: 'stairs', ...PARTIAL, hardness: 1.5, ...STONE, variants: 'facing' });
+def('stone_brick_slab', { label: 'Stone Brick Slab', tex: 'stone_bricks', shape: 'slab', ...PARTIAL, hardness: 1.5, ...STONE });
+def('stone_brick_stairs', { label: 'Stone Brick Stairs', tex: 'stone_bricks', shape: 'stairs', ...PARTIAL, hardness: 1.5, ...STONE, variants: 'facing' });
+def('brick_slab', { label: 'Brick Slab', tex: 'bricks', shape: 'slab', ...PARTIAL, hardness: 2, ...STONE });
+def('brick_stairs', { label: 'Brick Stairs', tex: 'bricks', shape: 'stairs', ...PARTIAL, hardness: 2, ...STONE, variants: 'facing' });
+def('sandstone_slab', { label: 'Sandstone Slab', tex: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' }, shape: 'slab', ...PARTIAL, hardness: 0.8, ...STONE });
+def('sandstone_stairs', { label: 'Sandstone Stairs', tex: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' }, shape: 'stairs', ...PARTIAL, hardness: 0.8, ...STONE, variants: 'facing' });
+for (const wood of ['birch', 'spruce']) {
+  const label = wood[0].toUpperCase() + wood.slice(1);
+  def(`${wood}_slab`, { label: `${label} Slab`, tex: `${wood}_planks`, shape: 'slab', ...PARTIAL, hardness: 2, fuel: 7, ...WOOD });
+  def(`${wood}_stairs`, { label: `${label} Stairs`, tex: `${wood}_planks`, shape: 'stairs', ...PARTIAL, hardness: 2, fuel: 15, ...WOOD, variants: 'facing' });
+}
+// Every slab also comes as a top-half slab and a full double slab, and every stairs
+// upside down. They're separate ids (so older saves keep their numbers) and drop the
+// ordinary item.
+for (const { name, ...d } of DEFS.filter((x) => x.shape === 'slab' || x.shape === 'stairs')) {
+  if (d.shape === 'slab') {
+    def(`${name}_top`, { ...d, half: 'top', noItem: true, drop: name });
+    def(`${name}_double`, { ...d, shape: 'cube', opaque: true, noItem: true, drop: name, dropCount: 2 });
+  } else {
+    def(`${name}_upside`, { ...d, upside: true, noItem: true, drop: name });
+  }
+}
+
 // Expand variant blocks into several ids. 'facing' → 4 ids (base faces +z);
-// 'axis' → 3 ids (0 = y, 1 = x, 2 = z).
+// 'axis' → 3 ids (0 = y, 1 = x, 2 = z); 'door' and 'gate' → 8 (facing + 4 * open);
+// 'trapdoor' → 16 (facing + 4 * open + 8 * top half).
+const VARIANT_COUNT = { facing: 4, axis: 3, door: 8, gate: 8, trapdoor: 16 };
+const FACES_WITH = new Set(['facing', 'door', 'gate', 'trapdoor']);
 export const BLOCKS = [];
 export const BLOCK_ID = {};
 for (const d of DEFS) {
-  const count = d.variants === 'facing' ? 4 : d.variants === 'axis' ? 3 : 1;
+  const count = VARIANT_COUNT[d.variants] ?? 1;
   for (let v = 0; v < count; v++) {
     const id = BLOCKS.length;
     BLOCKS.push({
@@ -158,7 +209,9 @@ for (const d of DEFS) {
       source: d.source ?? false,
       fallingFluid: d.falling ?? false,
       interact: d.interact ?? null,
-      facing: d.variants === 'facing' ? v : -1,
+      facing: FACES_WITH.has(d.variants) ? v & 3 : -1,
+      open: d.variants === 'door' || d.variants === 'gate' || d.variants === 'trapdoor' ? (v >> 2) & 1 : 0,
+      top: d.half === 'top' || (d.variants === 'trapdoor' && v >= 8),
       axis: d.variants === 'axis' ? v : -1,
       variants: d.variants ?? null,
       frontTwo: d.frontTwo ?? false,
@@ -177,6 +230,11 @@ for (const d of DEFS) {
       slippery: d.slippery ?? false,
       fence: d.fence ?? false,
       color: d.color ?? null,
+      door: d.door ?? null,
+      pane: d.pane ?? false,
+      carpet: d.carpet ?? false,
+      climbable: d.climbable ?? false,
+      upside: d.upside ?? false,
     });
     if (v === 0) BLOCK_ID[d.name] = id;
   }
@@ -184,6 +242,25 @@ for (const d of DEFS) {
 
 export const B = BLOCK_ID;
 export const BLOCK_COUNT = BLOCKS.length;
+
+// Links between the forms of one block: a slab's top and double forms, a stairs'
+// upside-down form, a door's two halves.
+for (const b of BLOCKS) {
+  if (b.shape === 'slab' && !b.top) {
+    b.slabTop = BLOCK_ID[`${b.name}_top`];
+    b.slabDouble = BLOCK_ID[`${b.name}_double`];
+  }
+  if (b.shape === 'slab' && b.top) b.slabBottom = BLOCK_ID[b.drop];
+  if (b.shape === 'stairs' && !b.upside) b.upsideBase = BLOCK_ID[`${b.name}_upside`];
+  if (b.door === 'lower') b.partnerBase = BLOCK_ID[`${b.name}_top`];
+  if (b.door === 'upper') b.partnerBase = BLOCK_ID[b.name.replace(/_top$/, '')];
+}
+
+// A variant of a door, trapdoor or gate with open flipped.
+export function toggled(id) {
+  const b = BLOCKS[id];
+  return b.open ? id - 4 : id + 4;
+}
 const N = BLOCK_COUNT;
 export const OPAQUE = new Uint8Array(N);
 export const SOLID = new Uint8Array(N);
@@ -248,6 +325,25 @@ export function fluidId(kind, level, falling = false) {
 // dz)` returns the id of a neighbor, used by fences to connect. `collide` widens a few
 // shapes the way Minecraft does (fences are 1.5 tall so they can't be jumped).
 const H = 1 / 16;
+
+// Turn a box drawn for facing 0 (+z) to face another way, about the block's center.
+function turned(box, facing) {
+  const [x0, y0, z0, x1, y1, z1] = box;
+  const spin = (x, z) => {
+    const u = x - 0.5, w = z - 0.5;
+    const [a, c] = [[u, w], [-w, u], [-u, -w], [w, -u]][facing];
+    return [a + 0.5, c + 0.5];
+  };
+  const [ax, az] = spin(x0, z0);
+  const [bx, bz] = spin(x1, z1);
+  return [Math.min(ax, bx), y0, Math.min(az, bz), Math.max(ax, bx), y1, Math.max(az, bz)];
+}
+// A thin panel along the block's side in a facing's direction.
+const panel = (facing, thick, y0 = 0, y1 = 1) => turned([0, y0, 1 - thick, 1, y1, 1], facing);
+
+// Panes and iron bars join each other, full blocks and glass.
+const paneJoins = (n) => !!(BLOCKS[n]?.pane || OPAQUE[n] || BLOCKS[n]?.cullSelf);
+
 export function shapeBoxes(id, get, collide = false) {
   const b = BLOCKS[id];
   switch (SHAPES[id]) {
@@ -257,10 +353,54 @@ export function shapeBoxes(id, get, collide = false) {
     case SHAPE.CACTUS:
       return [[H, 0, H, 1 - H, 1, 1 - H]];
     case SHAPE.SLAB:
-      return [[0, 0, 0, 1, 0.5, 1]];
+      return b.top ? [[0, 0.5, 0, 1, 1, 1]] : [[0, 0, 0, 1, 0.5, 1]];
     case SHAPE.STAIRS: {
-      const top = [[0, 0.5, 0.5, 1, 1, 1], [0, 0.5, 0, 0.5, 1, 1], [0, 0.5, 0, 1, 1, 0.5], [0.5, 0.5, 0, 1, 1, 1]][b.facing];
-      return [[0, 0, 0, 1, 0.5, 1], top];
+      const step = [[0, 0.5, 0.5, 1, 1, 1], [0, 0.5, 0, 0.5, 1, 1], [0, 0.5, 0, 1, 1, 0.5], [0.5, 0.5, 0, 1, 1, 1]][b.facing];
+      if (b.upside) return [[0, 0.5, 0, 1, 1, 1], [step[0], 0, step[2], step[3], 0.5, step[5]]];
+      return [[0, 0, 0, 1, 0.5, 1], step];
+    }
+    case SHAPE.DOOR:
+      // Closed, the door stands on the far side of its block; open, it swings to the
+      // hinge on the left.
+      return [panel(b.open ? (b.facing + 3) % 4 : b.facing, 3 * H)];
+    case SHAPE.TRAPDOOR:
+      if (b.open) return [panel(b.facing, 3 * H)];
+      return b.top ? [[0, 13 * H, 0, 1, 1, 1]] : [[0, 0, 0, 1, 3 * H, 1]];
+    case SHAPE.LADDER:
+      return [panel(b.facing, collide ? 3 * H : H)];
+    case SHAPE.CARPET:
+      return [[0, 0, 0, 1, H, 1]];
+    case SHAPE.PANE: {
+      const t0 = 7 * H, t1 = 9 * H;
+      const x = [paneJoins(get(1, 0, 0)), paneJoins(get(-1, 0, 0))];
+      const z = [paneJoins(get(0, 0, 1)), paneJoins(get(0, 0, -1))];
+      // On its own a pane shows as a cross, like the inventory icon.
+      if (!x[0] && !x[1] && !z[0] && !z[1]) return [[0, 0, t0, 1, 1, t1], [t0, 0, 0, t1, 1, 1]];
+      const boxes = [[t0, 0, t0, t1, 1, t1]];
+      if (x[0]) boxes.push([t1, 0, t0, 1, 1, t1]);
+      if (x[1]) boxes.push([0, 0, t0, t0, 1, t1]);
+      if (z[0]) boxes.push([t0, 0, t1, t1, 1, 1]);
+      if (z[1]) boxes.push([t0, 0, 0, t1, 1, t0]);
+      return boxes;
+    }
+    case SHAPE.GATE: {
+      // Drawn for a gate across x (facing 0 or 2); turned for the other two.
+      const across = b.facing === 1 || b.facing === 3 ? 1 : 0;
+      if (collide) return b.open ? [] : [turned([0, 0, 6 * H, 1, 1.5, 10 * H], across)];
+      const posts = [[0, 5 * H, 7 * H, 2 * H, 1, 9 * H], [14 * H, 5 * H, 7 * H, 1, 1, 9 * H]];
+      let bars;
+      if (!b.open) {
+        bars = [[2 * H, 6 * H, 7 * H, 14 * H, 9 * H, 9 * H], [2 * H, 12 * H, 7 * H, 14 * H, 15 * H, 9 * H], [6 * H, 9 * H, 7 * H, 10 * H, 12 * H, 9 * H]];
+      } else {
+        // Swung open toward the side it faces.
+        const dir = b.facing === 0 || b.facing === 3 ? 1 : -1;
+        const z0 = dir > 0 ? 9 * H : H, z1 = dir > 0 ? 15 * H : 7 * H;
+        bars = [];
+        for (const x0 of [0, 14 * H]) {
+          bars.push([x0, 6 * H, z0, x0 + 2 * H, 9 * H, z1], [x0, 12 * H, z0, x0 + 2 * H, 15 * H, z1]);
+        }
+      }
+      return [...posts, ...bars].map((bx) => turned(bx, across));
     }
     case SHAPE.CUSHION:
       return [[H, 0, H, 1 - H, 3 * H, 1 - H]];

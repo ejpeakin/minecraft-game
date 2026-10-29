@@ -1,6 +1,6 @@
 // Items, tools, food, crafting recipes and smelting. Block items share the block's
 // name; everything else is a plain item with an icon painted in textures.js.
-import { BLOCKS, B, COLORS } from './blocks.js';
+import { BLOCKS, B, COLORS, WOODS } from './blocks.js';
 
 export const ITEMS = {};
 
@@ -77,7 +77,7 @@ export function fuelValue(name) {
 
 const PLANKS = ['oak_planks', 'birch_planks', 'spruce_planks', 'poplar_planks'];
 const LOGS = ['oak_log', 'birch_log', 'spruce_log', 'poplar_log'];
-const SLABS = ['oak_slab', 'poplar_slab'];
+const SLABS = ['oak_slab', 'birch_slab', 'spruce_slab', 'poplar_slab'];
 const COALS = ['coal', 'charcoal'];
 
 // Shaped recipes: rows of characters, '.' is empty, keys map to an item name or a list
@@ -123,15 +123,27 @@ function slabsAndStairs(material, base) {
   shaped(['MMM'], { M: material }, `${base}_slab`, 6);
   shaped(['M..', 'MM.', 'MMM'], { M: material }, `${base}_stairs`, 4);
 }
-slabsAndStairs('oak_planks', 'oak');
-slabsAndStairs('poplar_planks', 'poplar');
+for (const [wood] of WOODS) {
+  const P = `${wood}_planks`;
+  slabsAndStairs(P, wood);
+  shaped(['PSP', 'PSP'], { P, S: 'stick' }, `${wood}_fence`, 3);
+  shaped(['SPS', 'SPS'], { P, S: 'stick' }, `${wood}_fence_gate`);
+  shaped(['PP', 'PP', 'PP'], { P }, `${wood}_door`, 3);
+  shaped(['PPP', 'PPP'], { P }, `${wood}_trapdoor`, 2);
+}
 slabsAndStairs('cobblestone', 'cobblestone');
-shaped(['PSP', 'PSP'], { P: 'oak_planks', S: 'stick' }, 'oak_fence', 3);
-shaped(['PSP', 'PSP'], { P: 'poplar_planks', S: 'stick' }, 'poplar_fence', 3);
+slabsAndStairs('stone', 'stone');
+slabsAndStairs('stone_bricks', 'stone_brick');
+slabsAndStairs('bricks', 'brick');
+slabsAndStairs('sandstone', 'sandstone');
+shaped(['S.S', 'SSS', 'S.S'], { S: 'stick' }, 'ladder', 3);
+shaped(['GGG', 'GGG'], { G: 'glass' }, 'glass_pane', 16);
+shaped(['III', 'III'], { I: 'iron_ingot' }, 'iron_bars', 16);
 for (const [color] of COLORS) {
   slabsAndStairs(`${color}_wool`, `${color}_wool`);
   slabsAndStairs(`${color}_concrete`, `${color}_concrete`);
-  shaped(['WW'], { W: `${color}_wool` }, `${color}_cushion`, 2);
+  shaped(['W', 'W'], { W: `${color}_wool` }, `${color}_cushion`, 2);
+  shaped(['WW'], { W: `${color}_wool` }, `${color}_carpet`, 3);
   if (ITEMS[`${color}_dye`]) {
     shaped(['WWW', 'WDW', 'WWW'], { W: 'white_wool', D: `${color}_dye` }, `${color}_wool`, 8);
     shaped(['WWW', 'WDW', 'WWW'], { W: 'white_concrete', D: `${color}_dye` }, `${color}_concrete`, 8);

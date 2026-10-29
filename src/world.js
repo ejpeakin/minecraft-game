@@ -248,6 +248,7 @@ export class World {
     this.checkFall(x, y + 1, z);
     // Things that need support.
     this.checkSupport(x, y + 1, z);
+    this.checkSupport(x, y - 1, z);
     for (const [dx, , dz] of N4) this.checkSupport(x + dx, y, z + dz);
   }
 
@@ -277,6 +278,15 @@ export class World {
       ok = !!behind.name.endsWith('_log');
     } else if (id === B.cactus) {
       ok = below === B.sand || below === B.cactus;
+    } else if (b.door) {
+      // The two halves of a door go together; the bottom half stands on solid ground.
+      const other = BLOCKS[this.getBlock(x, y + (b.door === 'lower' ? 1 : -1), z)];
+      ok = other.baseId === b.partnerBase && (b.door === 'upper' || !!SOLID[below]);
+    } else if (b.carpet) {
+      ok = below !== 0 && !FLUID[below];
+    } else if (b.climbable) {
+      const [fx, fz] = FACING_DIR[b.facing];
+      ok = !!OPAQUE[this.getBlock(x + fx, y, z + fz)];
     } else {
       return;
     }

@@ -498,6 +498,46 @@ const GEN = {
   barrel_bottom(t, r) { GEN.barrel_top(t, r); },
 };
 
+// Wooden door halves: framed vertical boards; the top half of lighter woods has two
+// little windows (cut out, so you can see through them).
+const WOOD_COLOR = { oak: OAK, birch: BIRCH, spruce: SPRUCE, poplar: POPLAR };
+const DOOR_WINDOWS = { oak: true, birch: true, spruce: false, poplar: true };
+function doorHalf(t, r, wood, upper) {
+  const base = WOOD_COLOR[wood];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    let c = mul(base, 0.96 + r() * 0.1 + Math.sin((x >> 2) * 2.1 + y * 0.15) * 0.03);
+    if (x % 4 === 3) c = mul(base, 0.8);
+    const frame = x === 0 || x === S - 1 || (upper ? y === 0 : y === S - 1);
+    const rail = upper ? y === 9 : y === 6 || y === 7;
+    if (frame) c = mul(base, 0.66);
+    else if (rail) c = mul(base, 0.72);
+    t.set(x, y, c);
+  }
+  if (upper && DOOR_WINDOWS[wood]) {
+    for (let y = 2; y < 8; y++) for (let x = 2; x < 14; x++) {
+      if (x === 7 || x === 8 || y === 4) t.set(x, y, mul(base, 0.7));
+      else t.clear(x, y);
+    }
+  }
+  if (!upper) {
+    // Handle.
+    t.set(12, 1, [70, 70, 76]); t.set(12, 2, [110, 110, 118]); t.set(13, 2, [50, 50, 56]);
+  }
+}
+
+function trapdoor(t, r, wood) {
+  const base = WOOD_COLOR[wood];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const edge = x < 2 || y < 2 || x > 13 || y > 13 || x === 7 || x === 8 || y === 7 || y === 8;
+    if (!edge && DOOR_WINDOWS[wood]) { t.clear(x, y); continue; }
+    let c = mul(base, 0.95 + r() * 0.1);
+    if (edge && (x === 0 || y === 0 || x === 15 || y === 15)) c = mul(base, 0.66);
+    else if (!edge && x % 3 === 0) c = mul(base, 0.8);
+    t.set(x, y, c);
+  }
+  t.set(3, 3, [70, 70, 76]); t.set(12, 3, [70, 70, 76]); t.set(3, 12, [70, 70, 76]); t.set(12, 12, [70, 70, 76]);
+}
+
 function sapling(t, r, stem, leaf) {
   for (let y = 9; y < 16; y++) t.set(8, y, stem);
   for (let i = 0; i < 26; i++) {
@@ -506,6 +546,24 @@ function sapling(t, r, stem, leaf) {
     t.set(Math.round(8 + Math.cos(a) * d), Math.round(6 + Math.sin(a) * d * 0.9), mul(leaf, 0.75 + r() * 0.45));
   }
 }
+
+for (const wood of Object.keys(WOOD_COLOR)) {
+  GEN[`${wood}_door_bottom`] = (t, r) => doorHalf(t, r, wood, false);
+  GEN[`${wood}_door_top`] = (t, r) => doorHalf(t, r, wood, true);
+  GEN[`${wood}_trapdoor`] = (t, r) => trapdoor(t, r, wood);
+}
+GEN.ladder = (t, r) => {
+  for (let y = 0; y < S; y++) {
+    for (const x of [2, 3, 12, 13]) t.set(x, y, mul(x === 2 || x === 12 ? [128, 98, 56] : [100, 76, 42], 0.92 + r() * 0.14));
+    if (y % 4 === 1 || y % 4 === 2) for (let x = 4; x < 12; x++) t.set(x, y, mul(y % 4 === 1 ? [150, 118, 70] : [112, 86, 48], 0.92 + r() * 0.14));
+  }
+};
+GEN.iron_bars = (t) => {
+  for (let y = 0; y < S; y++) {
+    for (const x of [1, 5, 9, 13]) { t.set(x, y, [158, 158, 164]); t.set(x + 1, y, [96, 96, 104]); }
+  }
+  for (const y of [0, 15]) for (let x = 0; x < S; x++) t.set(x, y, [140, 140, 148]);
+};
 
 for (const [color] of COLORS) {
   GEN[`${color}_wool`] = (t, r) => {
@@ -660,6 +718,18 @@ function mapIcon(t, explorer) {
 
 for (const [tier, mat] of Object.entries(TIER_COLOR)) {
   for (const type of ['pickaxe', 'axe', 'shovel', 'sword']) ITEM_GEN[`${tier}_${type}`] = (t) => tool(t, type, mat);
+}
+// A door item is the whole door, squeezed into the middle of the icon.
+for (const wood of Object.keys(WOOD_COLOR)) {
+  ITEM_GEN[`${wood}_door`] = (t) => {
+    const top = paint(GEN[`${wood}_door_top`], `${wood}_door_top`);
+    const bottom = paint(GEN[`${wood}_door_bottom`], `${wood}_door_bottom`);
+    for (let y = 0; y < S; y++) for (let x = 0; x < 8; x++) {
+      const src = y < 8 ? top : bottom;
+      const [cr, cg, cb, ca] = src.get(x * 2, (y % 8) * 2);
+      if (ca) t.set(x + 4, y, [cr, cg, cb]);
+    }
+  };
 }
 for (const name of Object.keys(ITEMS)) {
   const dye = ITEMS[name].dye;
@@ -823,7 +893,7 @@ export class TextureBank {
       ctx.drawImage(flat, 0, 0, 64, 64);
     } else if (block) {
       const shape = SHAPES[block.id];
-      if (shape === SHAPE.CROSS || shape === SHAPE.TORCH) {
+      if (shape === SHAPE.CROSS || shape === SHAPE.TORCH || shape === SHAPE.LADDER || shape === SHAPE.PANE) {
         ctx.drawImage(this.tileCanvases.get(block.tex.side), 0, 0, 64, 64);
       } else {
         this.drawIso(ctx, block);

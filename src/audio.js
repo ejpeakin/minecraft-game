@@ -127,6 +127,9 @@ export class Audio {
     this.burst({ type: 'bandpass', freq: 2400, q: 1.6, dur: 0.035, gain: 0.32 }, 1, 1);
     this.tone(1250, 0.035, { type: 'triangle', gain: 0.07, slide: 0.55 });
   }
+  door(open, pos, listener) {
+    this.burst({ type: 'bandpass', freq: open ? 560 : 430, q: 2.4, dur: 0.17, gain: 0.55, tone: open ? 170 : 125 }, this.att(pos, listener), 0.9 + Math.random() * 0.15);
+  }
   hurt() { this.tone(220, 0.18, { type: 'sawtooth', gain: 0.22, slide: 0.6 }); }
   eat() { this.burst({ type: 'bandpass', freq: 900, q: 1.5, dur: 0.1, gain: 0.3 }, 1, 0.7 + Math.random() * 0.5); }
   burp() { this.tone(140, 0.3, { type: 'sawtooth', gain: 0.18, slide: 0.7 }); }

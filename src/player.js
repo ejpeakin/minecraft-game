@@ -1,7 +1,7 @@
 // The player: look and movement (walk, sprint, sneak, swim, fly, sit), vitals
 // (health, hunger, saturation, air, fall damage), and every way of acting on the
 // world (mining, attacking, placing, eating, using blocks and items).
-import { BLOCKS, B, SOLID, FLUID, FACING_DIR, OPAQUE } from './blocks.js';
+import { BLOCKS, B, SOLID, FLUID, FACING_DIR, OPAQUE, toggled } from './blocks.js';
 import { ITEMS, breakTime, toolOf, attackDamage, SMELTING } from './items.js';
 import { Inventory } from './inventory.js';
 import { moveEntity, fluidIn, raycast, touchesBlock } from './physics.js';
@@ -167,6 +167,8 @@ export class Player {
     const fluid = fluidIn(world, this.x - hw + 0.01, this.y + 0.05, this.z - hw + 0.01, this.x + hw - 0.01, this.y + 1.2, this.z + hw - 0.01);
     this.inWater = fluid === 1;
     this.inLava = fluid === 2;
+    // On a ladder when one is at foot level.
+    this.onLadder = !this.flying && touchesBlock(world, { x: this.x, y: this.y, z: this.z, w: this.w, h: 0.4 }, (id) => BLOCKS[id].climbable);
     const headId = world.getBlock(Math.floor(this.x), Math.floor(this.y + this.eyeHeight), Math.floor(this.z));
     this.headInWater = FLUID[headId] === 1;
     this.headInLava = FLUID[headId] === 2;
@@ -198,6 +200,14 @@ export class Player {
       this.vy = Math.max(this.vy, -2.5);
       this.vy *= Math.pow(0.4, dt);
       if (key('Space') && this.collidedH) this.vy = 5.5;
+      this.fallDistance = 0;
+    } else if (this.onLadder) {
+      // Climb when pushing into the ladder or holding jump, hold on while sneaking,
+      // otherwise slide down slowly.
+      this.vy -= GRAVITY * dt;
+      if (key('Space') || (fwd !== 0 && this.collidedH)) this.vy = 2.6;
+      else if (this.sneaking) this.vy = 0;
+      else this.vy = Math.max(this.vy, -2.4);
       this.fallDistance = 0;
     } else {
       this.vy -= GRAVITY * dt;
@@ -232,7 +242,7 @@ export class Player {
     else if (this.inWater) this.exhaustion += moved * 0.01;
 
     // Fall damage.
-    if (this.flying || this.inWater || this.inLava) this.fallDistance = 0;
+    if (this.flying || this.inWater || this.inLava || this.onLadder) this.fallDistance = 0;
     else if (dyMoved < 0 && !this.onGround) this.fallDistance -= dyMoved;
     if (this.onGround && !wasGround) {
       if (this.fallDistance > 3.5 && this.mode === 'survival') {
@@ -478,6 +488,12 @@ export class Player {
     const { x, y, z, block: b } = this.target;
     world.ensureLoot(x, y, z);
     const below = world.getBlock(x, y - 1, z);
+    // In creative a door's other half goes quietly (in survival it pops off and drops
+    // the door).
+    if (b.door && !survival) {
+      const dy = b.door === 'lower' ? 1 : -1;
+      if (BLOCKS[world.getBlock(x, y + dy, z)].baseId === b.partnerBase) world.setBlock(x, y + dy, z, 0, { silent: true });
+    }
     let replacement = 0;
     if (b.id === B.ice && survival && below !== 0) replacement = B.water;
     world.setBlock(x, y, z, replacement);
@@ -533,21 +549,55 @@ export class Player {
     }
     if (!t || !item || item.block === undefined) return false;
 
+    let id = item.block;
+    const b = BLOCKS[id];
+    const placed = (x, y, z) => {
+      game.audio.block(b.sound, 'place', { x, y, z }, this);
+      if (this.mode === 'survival') this.inventory.consumeHeld(1);
+      return true;
+    };
+    // A slab on the matching half of the same slab makes a double slab.
+    if (b.slabTop && ((t.id === id && t.ny === 1) || (t.id === b.slabTop && t.ny === -1))) {
+      if (this.blocksEntity(t.x, t.y, t.z)) return false;
+      world.setBlock(t.x, t.y, t.z, b.slabDouble);
+      return placed(t.x, t.y, t.z);
+    }
+
     // Where the block goes: into the target if it is replaceable, else next to it.
     let px = t.x + t.nx, py = t.y + t.ny, pz = t.z + t.nz;
     if (BLOCKS[t.id].replaceable && !FLUID[t.id]) { px = t.x; py = t.y; pz = t.z; }
     if (py < 0 || py >= HEIGHT) return false;
     const cur = world.getBlock(px, py, pz);
+    // Or into a half-filled slab spot from the side.
+    if (b.slabTop && (cur === id || cur === b.slabTop)) {
+      if (this.blocksEntity(px, py, pz)) return false;
+      world.setBlock(px, py, pz, b.slabDouble);
+      return placed(px, py, pz);
+    }
     if (!(cur === 0 || BLOCKS[cur].replaceable)) return false;
-    let id = item.block;
-    const b = BLOCKS[id];
     const [lx, , lz] = this.lookDir();
     const lookFacing = Math.abs(lx) > Math.abs(lz) ? (lx > 0 ? 3 : 1) : (lz > 0 ? 0 : 2);
     const toward = (lookFacing + 2) % 4;
+    // Which half of the clicked face was hit: slabs, stairs and trapdoors go on the
+    // upper half when you click high on a side or the underside of a block.
+    const hitY = this.y + this.eyeHeight + this.lookDir()[1] * t.t - t.y;
+    const upper = t.ny === -1 || (t.ny === 0 && hitY > 0.5);
+    // The facing that puts a block's back against the clicked face (ladders, trapdoors).
+    const wall = FACING_DIR.findIndex(([fx, fz]) => fx === -t.nx && fz === -t.nz);
     if (b.variants === 'axis') id += t.nx !== 0 ? 1 : t.nz !== 0 ? 2 : 0;
-    else if (b.variants === 'facing') {
-      if (b.shape === 'stairs') id += lookFacing;
-      else if (b.shelf) {
+    else if (b.slabTop) {
+      if (upper) id = b.slabTop;
+    } else if (b.shape === 'stairs') {
+      id = (upper ? b.upsideBase : id) + lookFacing;
+    } else if (b.shape === 'ladder') {
+      if (t.ny !== 0 || !OPAQUE[t.id]) return false;
+      id += wall;
+    } else if (b.shape === 'trapdoor') {
+      id += (t.ny === 0 ? wall : toward) + (upper ? 8 : 0);
+    } else if (b.door || b.shape === 'gate') {
+      id += lookFacing;
+    } else if (b.variants === 'facing') {
+      if (b.shelf) {
         if (t.ny !== 0 || !t.block.name.endsWith('_log')) return false;
         id += FACING_DIR.findIndex(([fx, fz]) => fx === t.nx && fz === t.nz);
       } else id += toward;
@@ -556,11 +606,19 @@ export class Player {
     if (b.plant && !canPlantOn(id, below)) return false;
     if (id === B.cactus && below !== B.sand && below !== B.cactus) return false;
     if (id === B.torch && !SOLID[below] && ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => OPAQUE[world.getBlock(px + dx, py, pz + dz)])) return false;
+    if (b.carpet && (below === 0 || FLUID[below])) return false;
     if (SOLID[id] && this.blocksEntity(px, py, pz)) return false;
+    if (b.door) {
+      // Doors stand on solid ground and need room for their top half.
+      const above = world.getBlock(px, py + 1, pz);
+      if (!SOLID[below] || py + 1 >= HEIGHT || !(above === 0 || (BLOCKS[above].replaceable && !FLUID[above]))) return false;
+      if (this.blocksEntity(px, py, pz) || this.blocksEntity(px, py + 1, pz)) return false;
+      world.setBlock(px, py, pz, id);
+      world.setBlock(px, py + 1, pz, b.partnerBase + lookFacing);
+      return placed(px, py, pz);
+    }
     world.setBlock(px, py, pz, id);
-    game.audio.block(b.sound, 'place', { x: px, y: py, z: pz }, this);
-    if (this.mode === 'survival') this.inventory.consumeHeld(1);
-    return true;
+    return placed(px, py, pz);
   }
 
   blocksEntity(x, y, z) {
@@ -609,6 +667,17 @@ export class Player {
       case 'bed':
         game.trySleep(t.x, t.y, t.z);
         return true;
+      case 'door': {
+        // Doors open both halves together; anything else opens on its own.
+        world.setBlock(t.x, t.y, t.z, toggled(t.id));
+        if (b.door) {
+          const dy = b.door === 'lower' ? 1 : -1;
+          const other = world.getBlock(t.x, t.y + dy, t.z);
+          if (BLOCKS[other].door && BLOCKS[other].baseId === b.partnerBase && BLOCKS[other].open === b.open) world.setBlock(t.x, t.y + dy, t.z, toggled(other));
+        }
+        game.audio.door(!b.open, { x: t.x, y: t.y, z: t.z }, this);
+        return true;
+      }
       default:
         return false;
     }
@@ -616,7 +685,8 @@ export class Player {
 
   pickBlock() {
     if (this.mode !== 'creative' || !this.target) return;
-    const name = BLOCKS[this.target.block.baseId].item ?? this.target.block.drop;
+    const b = this.target.block;
+    const name = BLOCKS[b.baseId].item ?? b.drop ?? (b.door ? BLOCKS[b.partnerBase].item : null);
     if (!name || !ITEMS[name]) return;
     const inv = this.inventory;
     const found = inv.slots.findIndex((s, i) => i < 9 && s?.id === name);
