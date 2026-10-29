@@ -4,7 +4,7 @@
 import * as THREE from './three.js';
 import { TextureBank } from './textures.js';
 import { World } from './world.js';
-import { CHUNK, SEA } from './worldgen.js';
+import { CHUNK, HEIGHT, SEA } from './worldgen.js';
 import { ChunkRenderer, SelectionBox, CrackOverlay, Particles } from './renderer.js';
 import { Sky } from './sky.js';
 import { Player } from './player.js';
@@ -585,8 +585,20 @@ export class Game {
     this.chunkRenderer.clear();
     const world = new World(PANORAMA_SEED);
     const spawn = world.gen.findSpawn();
-    // Just above the treetops, looking out over the autumn canopy.
-    this.panorama = { world, x: spawn.x, y: spawn.y + 24, z: spawn.z, yaw: Math.random() * Math.PI * 2, shown: false };
+    // Just above the treetops, looking out over the autumn canopy: clear of the tallest
+    // tree nearby, so the camera never starts inside leaves.
+    const cx = Math.floor(spawn.x / CHUNK), cz = Math.floor(spawn.z / CHUNK);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) world.generateChunk(cx + dx, cz + dz);
+    let top = spawn.y;
+    for (let dz = -10; dz <= 10; dz += 2) for (let dx = -10; dx <= 10; dx += 2) {
+      for (let y = Math.min(HEIGHT - 1, spawn.y + 48); y > top; y--) {
+        if (world.getBlock(Math.floor(spawn.x) + dx, y, Math.floor(spawn.z) + dz)) {
+          top = y;
+          break;
+        }
+      }
+    }
+    this.panorama = { world, x: spawn.x, y: Math.max(spawn.y + 16, top + 6), z: spawn.z, yaw: Math.random() * Math.PI * 2, shown: false };
     this.particles.items = [];
   }
 
