@@ -19,6 +19,7 @@ import { SMELTING, fuelValue, maxStack } from './items.js';
 import { seedFromString } from './noise.js';
 
 const SETTINGS_KEY = 'blockcraft.settings';
+const PANORAMA_SEED = 20261029; // a seed whose spawn sits in a colorful Dappled Forest
 const INDEX_KEY = 'blockcraft.worlds';
 const WORLD_KEY = (id) => `blockcraft.world.${id}`;
 
@@ -153,6 +154,7 @@ export class Game {
       if (document.hidden) this.save();
     });
     this.ui.show('title');
+    this.startPanorama();
     this.last = performance.now();
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -220,6 +222,7 @@ export class Game {
   // saved here (the host's computer keeps it); edits are the room's changes so far.
   async startWorld({ id, name, seed, mode, save = null, edits = [], players = [] }) {
     const meta = { name, seed, mode };
+    this.stopPanorama();
     this.audio.resume();
     this.cancelSleep();
     this.worldId = id;
@@ -393,6 +396,7 @@ export class Game {
     document.getElementById('click-to-play').hidden = true;
     this.input.unlock();
     this.ui.show('title');
+    this.startPanorama();
   }
 
   // --- State ------------------------------------------------------------------------------
@@ -559,8 +563,7 @@ export class Game {
         this.render();
         this.checkBlackFrame(now);
       } else if (!this.world) {
-        this.renderer.setClearColor(0x000000);
-        this.renderer.clear();
+        this.renderPanorama(dt);
       }
     } catch (e) {
       console.error(e);
@@ -570,6 +573,70 @@ export class Game {
       }
     }
     this.input.endFrame();
+  }
+
+  // --- Title screen panorama -------------------------------------------------------------
+  // Like Minecraft's menu: a real Dappled Forest behind the title, built a few chunks at
+  // a time so the menu shows up at once, with the camera turning slowly.
+
+  startPanorama() {
+    this.chunkRenderer.clear();
+    const world = new World(PANORAMA_SEED);
+    const spawn = world.gen.findSpawn();
+    // Just above the treetops, looking out over the autumn canopy.
+    this.panorama = { world, x: spawn.x, y: spawn.y + 24, z: spawn.z, yaw: Math.random() * Math.PI * 2, shown: false };
+    this.particles.items = [];
+  }
+
+  stopPanorama() {
+    if (!this.panorama) return;
+    this.panorama = null;
+    this.chunkRenderer.clear();
+    this.particles.items = [];
+    document.getElementById('title-screen').classList.remove('live');
+  }
+
+  renderPanorama(dt) {
+    const pan = this.panorama;
+    if (!pan || this.state !== 'menu') {
+      this.renderer.setClearColor(0x000000);
+      this.renderer.clear();
+      return;
+    }
+    const { world } = pan;
+    const cx = Math.floor(pan.x / CHUNK), cz = Math.floor(pan.z / CHUNK);
+    const start = performance.now();
+    for (let r = 0; r <= 4 && performance.now() - start < 6; r++) {
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) === r && !world.getChunk(cx + dx, cz + dz)) world.generateChunk(cx + dx, cz + dz);
+      }
+    }
+    this.chunkRenderer.update(world, pan.x, pan.z, 3.5, 6);
+    if (!pan.shown && this.chunkRenderer.meshes.size >= 9) {
+      pan.shown = true;
+      document.getElementById('title-screen').classList.add('live');
+    }
+    pan.yaw += dt * 0.04;
+    world.time = 1800; // warm morning light
+    const cam = this.camera;
+    cam.position.set(pan.x, pan.y, pan.z);
+    cam.rotation.set(-0.3, pan.yaw, 0);
+    cam.fov = 75;
+    cam.updateProjectionMatrix();
+    this.sky.update(world.time, cam, dt, this.settings.clouds, this.settings.fancyGraphics);
+    const f = this.sky.fogColor;
+    this.chunkRenderer.setFog(f, 44, 64);
+    this.clearColor.setRGB(f[0], f[1], f[2], THREE.SRGBColorSpace);
+    this.renderer.setClearColor(this.clearColor);
+    const shared = this.chunkRenderer.shared;
+    shared.uDaylight.value = this.sky.daylight;
+    shared.uTime.value += dt;
+    shared.uSunDir.value.copy(this.sky.sunDir);
+    shared.uSkyColor.value.set(...f);
+    shared.uFlicker.value = 1;
+    this.spawnLeaves(dt, world, { x: pan.x, y: pan.y - 20, z: pan.z });
+    this.particles.update(dt, (x, y, z) => SOLID[world.getBlock(x, y, z)] && BLOCKS[world.getBlock(x, y, z)].shape === 'cube');
+    this.renderer.render(this.scene, cam);
   }
 
   // --- Graphics diagnostics -------------------------------------------------------------
@@ -844,12 +911,10 @@ export class Game {
     }
   }
 
-  spawnLeaves(dt) {
+  spawnLeaves(dt, world = this.world, p = this.player) {
     this.leafTimer -= dt;
     if (this.leafTimer > 0) return;
     this.leafTimer = 0.05;
-    const world = this.world;
-    const p = this.player;
     for (let i = 0; i < 6; i++) {
       const x = Math.floor(p.x + (Math.random() - 0.5) * 28);
       const z = Math.floor(p.z + (Math.random() - 0.5) * 28);

@@ -35,6 +35,14 @@ function creativeOrder() {
   return names.sort((a, b) => rank(a) - rank(b) || (rank(a) === 3 ? (a.split('_').pop().localeCompare(b.split('_').pop()) || colorIndex(a) - colorIndex(b)) : 0));
 }
 
+// The yellow splash on the title screen; one is picked at random each visit.
+const SPLASHES = [
+  'Wilderness Bound!', 'Now with poplars!', 'Don\u2019t dig straight down!', 'Shelf mushrooms!', 'Also try Rustbound!',
+  'Made in a browser!', 'Autumn is here!', 'Sit on a cushion!', '16 colors of wool!', 'Find the abandoned camps!',
+  'Press T to chat!', 'Punch a tree!', '100% procedural!', 'Waving leaves!', 'Creepers hate this!', 'Bring a torch!',
+  'Explorer maps inside!', 'Straw beds, one use only!', 'Now multiplayer!', 'Look up at the sunset!',
+];
+
 export class UI {
   constructor(game) {
     this.game = game;
@@ -59,6 +67,8 @@ export class UI {
     document.getElementById('version').textContent = `Version ${window.BLOCKCRAFT_VERSION ?? 'dev'}`;
     document.documentElement.style.setProperty('--dirt', `url(${stoneDataUrl(this.bank, 'dirt', 4)})`);
     $('logo').style.setProperty('--stone', `url(${stoneDataUrl(this.bank, 'cobblestone', 2)})`);
+    document.documentElement.style.setProperty('--planks', `url(${stoneDataUrl(this.bank, 'spruce_planks', 2)})`);
+    this.buildTitle();
   }
 
   // --- HUD -----------------------------------------------------------------------------
@@ -190,6 +200,7 @@ export class UI {
     for (const s of ['title', 'worlds', 'multiplayer', 'settings', 'help', 'pause', 'death', 'loading']) $(`${s}-screen`).hidden = s !== name;
     this.menu = name;
     if (name === 'worlds') this.renderWorlds();
+    if (name === 'title') this.updateContinue();
     if (name === 'multiplayer') this.renderMultiplayer();
     if (name === 'pause') $('btn-quit').textContent = this.game.worldId ? 'Save and Quit to Title' : 'Leave Game';
     if (name === 'settings') this.loadSettingsForm();
@@ -298,6 +309,31 @@ export class UI {
         }, 3000);
       });
     }
+  }
+
+  // --- Title screen -------------------------------------------------------------------------
+
+  buildTitle() {
+    const logo = $('logo');
+    const text = logo.textContent;
+    logo.textContent = '';
+    [...text].forEach((ch, i) => {
+      const span = el('span', 'ch', logo);
+      span.textContent = ch;
+      span.style.setProperty('--i', i);
+      span.setAttribute('aria-hidden', 'true');
+    });
+    $('splash').textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
+    $('btn-continue').addEventListener('click', () => {
+      const last = this.game.saves.list()[0];
+      if (last) this.game.openWorld(last.id);
+    });
+  }
+
+  updateContinue() {
+    const last = this.game.saves.list()[0];
+    $('btn-continue').hidden = !last;
+    if (last) $('continue-name').textContent = `${last.name} \u00b7 ${last.mode === 'creative' ? 'Creative' : 'Survival'}`;
   }
 
   // --- Multiplayer ------------------------------------------------------------------------
