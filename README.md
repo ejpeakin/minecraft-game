@@ -124,6 +124,34 @@ Multiplayer screen's **Server address** box. Render's free plan puts the server 
 sleep after 15 minutes without players; the first connection then takes up to a
 minute. To run it on your own computer: `npm install`, then `npm start`.
 
+### Multiplayer at school
+
+If your school network blocks Render, use Google Apps Script instead: a free script
+that runs on Google's own servers, which school Chromebooks can usually reach. Only the
+host needs to set it up, once:
+
+1. Go to [script.google.com](https://script.google.com) and click **New project**.
+2. Delete what's in the editor, then paste in everything from
+   [`relay/Code.gs`](relay/Code.gs). Click **Save**.
+3. Click **Deploy → New deployment**. Next to "Select type", click the gear and pick
+   **Web app**.
+4. Set **Execute as** to **Me** and **Who has access** to **Anyone**, then click
+   **Deploy**. Google asks you to allow access the first time (click **Advanced →
+   Go to project** if it warns that the app isn't verified; it's your own script).
+5. Copy the **Web app URL**. It ends in `/exec`.
+6. In Blockcraft, open **Multiplayer** and paste that link into **Server address**.
+   Give the same link to your friends: everyone pastes it in, then one player hosts
+   and the others join with the code, as above.
+
+If **Anyone** isn't in the list (some school Google accounts only allow people in
+your school), pick **Anyone within** your school instead. Then everyone has to be
+signed in to a school account in the browser. If it still won't connect, make the
+script with a personal Google account at home; the link works the same at school.
+
+Through Apps Script, other players' movement updates about 2 or 3 times a second
+instead of 10, so they move a little jerkily. Block edits, chat and hits arrive within
+about half a second. It's meant for a handful of friends, not a big server.
+
 What's shared: player movement, every block placed or broken (including explosions),
 chat, hits and the time of day (the host's clock; only the host can sleep through the
 night). Each player has their own inventory, mobs and item drops, and chests and
