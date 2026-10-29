@@ -422,7 +422,7 @@ export class Player {
     // Right: use.
     if (input.mouse[2]) {
       const food = ITEMS[this.held?.id]?.food;
-      if (food && (this.food < 20 || this.mode === 'creative') && !(this.target && this.canInteract(this.target) && !this.sneaking)) {
+      if (food && (this.food < 20 || this.mode === 'creative' || food.always) && !(this.target && this.canInteract(this.target) && !this.sneaking)) {
         this.eat(dt, food);
       } else {
         this.eating = 0;
@@ -541,6 +541,8 @@ export class Player {
     const item = held ? ITEMS[held.id] : null;
     const t = this.target;
 
+    // Animals first: feeding, milking, shearing, dyeing.
+    if (this.targetMob?.interact?.(this, held)) return true;
     if (t && !this.sneaking && this.canInteract(t)) {
       return this.interact(t);
     }
@@ -670,15 +672,7 @@ export class Player {
       const kind = FLUID[hit.id] === 1 ? 'water' : 'lava';
       world.setBlock(hit.x, hit.y, hit.z, 0);
       game.audio.splash(hit, this);
-      if (survival) {
-        const filled = { id: `${kind}_bucket`, count: 1 };
-        if (this.held.count === 1) this.inventory.held = filled;
-        else {
-          this.inventory.consumeHeld(1);
-          const left = this.inventory.add(filled);
-          if (left) game.entities.dropItem(this.x, this.y + 1, this.z, left);
-        }
-      }
+      if (survival) this.exchangeHeld({ id: `${kind}_bucket`, count: 1 });
       return true;
     }
     const t = this.target;
@@ -692,6 +686,18 @@ export class Player {
     game.audio.splash({ x: px, y: py, z: pz }, this);
     if (survival) this.inventory.held = { id: 'bucket', count: 1 };
     return true;
+  }
+
+  // Swap one of the held item for another (a bucket for a filled bucket); in creative
+  // the held item stays and the new one is added.
+  exchangeHeld(stack) {
+    if (this.mode === 'survival' && this.held?.count === 1) {
+      this.inventory.held = stack;
+      return;
+    }
+    if (this.mode === 'survival') this.inventory.consumeHeld(1);
+    const left = this.inventory.add(stack);
+    if (left) this.game.entities.dropItem(this.x, this.y + 1, this.z, left);
   }
 
   blocksEntity(x, y, z) {

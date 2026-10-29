@@ -145,6 +145,10 @@ export class Audio {
   mob(kind, sound, pos, listener) {
     if (kind === 'pig') this.tone(sound === 'hurt' ? 420 : 300 + Math.random() * 60, 0.22, { type: 'square', gain: 0.12, slide: 0.75, pos, listener });
     else if (kind === 'sheep') this.tone(sound === 'hurt' ? 520 : 440, 0.35, { type: 'sawtooth', gain: 0.08, slide: 0.92, pos, listener });
+    else if (kind === 'cow') this.tone(sound === 'hurt' ? 200 : 150, sound === 'hurt' ? 0.3 : 0.7, { type: 'sawtooth', gain: 0.1, slide: 0.8, pos, listener });
+    else if (kind === 'chicken') {
+      for (let i = 0; i < (sound === 'hurt' ? 1 : 3); i++) this.tone(sound === 'hurt' ? 1100 : 900 + i * 60, 0.07, { type: 'square', gain: 0.05, slide: 1.3, pos, listener, delay: i * 0.12 });
+    }
     else if (kind === 'zombie') this.tone(sound === 'hurt' ? 160 : 95 + Math.random() * 20, sound === 'hurt' ? 0.25 : 0.7, { type: 'sawtooth', gain: 0.16, slide: 0.8, pos, listener });
     else if (kind === 'creeper' && sound === 'hurt') this.burst({ type: 'highpass', freq: 2000, q: 0.5, dur: 0.25, gain: 0.3 }, this.att(pos, listener));
   }

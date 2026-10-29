@@ -244,6 +244,7 @@ export class Game {
       else this.entities.dropBlockItems(x, y, z, blockId, { type: BLOCKS[blockId].tool, level: 3, speed: 1 });
     };
     this.worldSpawn = save?.spawn ?? this.world.gen.findSpawn();
+    this.entities.loadAnimals(save?.animals);
     this.player.reset();
     this.player.mode = meta.mode;
     this.player.inventory.clear();
@@ -325,6 +326,7 @@ export class Game {
       world: { ...this.world.serialize(), markers: this.world.markers ?? [] },
       player: this.player.serialize(),
       spawn: this.worldSpawn,
+      animals: this.entities.serializeAnimals(),
     };
   }
 

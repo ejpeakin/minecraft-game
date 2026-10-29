@@ -36,6 +36,15 @@ item('wheat_seeds', { label: 'Wheat Seeds', plants: 'wheat_0' });
 item('wheat', { label: 'Wheat' });
 item('bread', { label: 'Bread', food: { hunger: 5, saturation: 6 } });
 item('bucket', { label: 'Bucket', maxStack: 16, bucket: 'empty' });
+item('milk_bucket', { label: 'Milk Bucket', maxStack: 1, food: { hunger: 0, saturation: 0, leaves: 'bucket', always: true } });
+item('leather', { label: 'Leather' });
+item('beef', { label: 'Raw Beef', food: { hunger: 3, saturation: 1.8 } });
+item('cooked_beef', { label: 'Steak', food: { hunger: 8, saturation: 12.8 } });
+item('chicken', { label: 'Raw Chicken', food: { hunger: 2, saturation: 1.2 } });
+item('cooked_chicken', { label: 'Cooked Chicken', food: { hunger: 6, saturation: 7.2 } });
+item('feather', { label: 'Feather' });
+item('egg', { label: 'Egg', maxStack: 16 });
+item('shears', { label: 'Shears', maxStack: 1, durability: 238, tool: { type: 'shears', level: 0, speed: 5, damage: 1 } });
 item('water_bucket', { label: 'Water Bucket', maxStack: 1, bucket: 'water' });
 item('lava_bucket', { label: 'Lava Bucket', maxStack: 1, bucket: 'lava' });
 item('map', { label: 'Map', maxStack: 1, map: true });
@@ -167,6 +176,7 @@ shaped(['WWW'], { W: 'wheat' }, 'bread');
 shaped(['WWW', 'WWW', 'WWW'], { W: 'wheat' }, 'hay_bale');
 shaped(['H'], { H: 'hay_bale' }, 'wheat', 9);
 shaped(['I.I', '.I.'], { I: 'iron_ingot' }, 'bucket');
+shaped(['.I', 'I.'], { I: 'iron_ingot' }, 'shears');
 shaped(['WWW', 'PPP'], { W: 'red_wool', P: PLANKS }, 'red_bed');
 
 const accepts = (key, name) => (Array.isArray(key) ? key.includes(name) : key === name);
@@ -245,6 +255,8 @@ export const SMELTING = {
   cobblestone: 'stone',
   porkchop: 'cooked_porkchop',
   mutton: 'cooked_mutton',
+  beef: 'cooked_beef',
+  chicken: 'cooked_chicken',
   cactus: 'green_dye',
   oak_log: 'charcoal',
   birch_log: 'charcoal',
@@ -270,6 +282,7 @@ export function breakTime(block, tool) {
   let speed = 1;
   if (tool && tool.type === block.tool) speed = tool.speed;
   if (tool?.type === 'sword' && (block.leaves || block.name === 'cactus')) speed = 1.5;
+  if (tool?.type === 'shears' && (block.leaves || block.sound === 'cloth')) speed = tool.speed;
   const factor = canHarvest(block, tool) ? 1.5 : 5;
   return (block.hardness * factor) / speed;
 }
@@ -281,6 +294,8 @@ export function attackDamage(stack) {
 // Items a broken block drops. rng() in [0, 1).
 export function blockDrops(block, tool, rng) {
   if (!canHarvest(block, tool)) return [];
+  // Shears collect leaves and grass themselves.
+  if (tool?.type === 'shears' && (block.leaves || block.id === B.tall_grass)) return [{ id: block.name, count: 1 }];
   if (block.leaves) {
     const out = [];
     if (rng() < 0.06) out.push({ id: `${block.leaves}_sapling`, count: 1 });
