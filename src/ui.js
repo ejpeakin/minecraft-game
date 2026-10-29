@@ -346,7 +346,7 @@ export class UI {
     this.mpHint = () => {
       const builtIn = !g.settings.serverUrl && g.net.serverUrl();
       $('mp-server-hint').textContent = builtIn === DEFAULT_SERVER
-        ? 'Using the game\u2019s school server: be signed in to your school Google account. Friends open this same page to join.'
+        ? 'Using free public multiplayer servers (works at school). Friends open this same page to join.'
         : builtIn
         ? 'Using this page’s server. Friends open the same link to join.'
         : 'Paste your game\u2019s server address: the Google Apps Script link (works at school) or a Render link. See the README for setup.';

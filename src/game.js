@@ -13,7 +13,7 @@ import { ViewModel } from './viewmodel.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { UI } from './ui.js';
-import { Net } from './net.js';
+import { Net, OLD_SCHOOL_RELAY } from './net.js';
 import { BLOCKS, SOLID, B } from './blocks.js';
 import { SMELTING, fuelValue, maxStack } from './items.js';
 import { seedFromString } from './noise.js';
@@ -163,7 +163,9 @@ export class Game {
 
   loadSettings() {
     try {
-      return { ...DEFAULT_SETTINGS, ...(JSON.parse(storageGet(SETTINGS_KEY) ?? '{}') ?? {}) };
+      const settings = { ...DEFAULT_SETTINGS, ...(JSON.parse(storageGet(SETTINGS_KEY) ?? '{}') ?? {}) };
+      if (settings.serverUrl === OLD_SCHOOL_RELAY) settings.serverUrl = ''; // moved to MQTT
+      return settings;
     } catch {
       return { ...DEFAULT_SETTINGS };
     }

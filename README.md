@@ -109,62 +109,36 @@ it with a four-letter code. Everyone sees each other, block edits show up for
 everyone, there's chat (T) and you can hit each other. The world stays saved on the
 host's computer, including what friends build. Up to 8 players per game.
 
-Multiplayer needs the Blockcraft server (`server.js`), which GitHub Pages can't run.
-Put it on [Render](https://render.com) for free:
+On the GitHub Pages site, multiplayer works with no setup. Leave **Server address**
+empty: one player clicks **Host** on a world and shares the code, and the others enter
+it and click **Join Game**. Messages go through a free public MQTT broker
+([HiveMQ](https://www.hivemq.com/mqtt/public-mqtt-broker/), or
+[EMQX](https://www.emqx.com/en/mqtt/public-mqtt5-broker) if HiveMQ is down). School
+networks usually let these through. Anyone who knows a game's code could listen in on
+it, so don't put anything private in chat. To check what a network allows, open
+[`nettest.html`](https://ejpeakin.github.io/minecraft-game/nettest.html) on the
+computer you play on.
 
-1. Sign in to Render with GitHub.
-2. Click **New → Blueprint** and pick this repository. Render reads `render.yaml`.
-3. Click **Apply**. After a few minutes you get a link like
-   `https://blockcraft-xxxx.onrender.com`.
-4. Everyone opens that link. One player goes to **Multiplayer → Host** on one of their
-   worlds and shares the code; the others enter it and click **Join Game**.
+### Other servers
 
-You can also play from GitHub Pages by pasting the Render address into the
-Multiplayer screen's **Server address** box. Render's free plan puts the server to
-sleep after 15 minutes without players; the first connection then takes up to a
-minute. To run it on your own computer: `npm install`, then `npm start`.
+You can paste one of these into **Server address** instead. Everyone in a game has to
+use the same one.
 
-### Multiplayer at school
-
-Not sure what your network allows? Open
-[`nettest.html`](https://ejpeakin.github.io/minecraft-game/nettest.html) on the computer
-you play on. It checks which multiplayer services get through in about 10 seconds.
-
-
-If your school network blocks Render, use Google Apps Script instead: a free script
-that runs on Google's own servers, which school Chromebooks can usually reach. Only the
-host needs to set it up, once:
-
-1. Go to [script.google.com](https://script.google.com) and click **New project**.
-2. Delete what's in the editor, then paste in everything from
-   [`relay/Code.gs`](relay/Code.gs). Click **Save**.
-3. Click **Deploy → New deployment**. Next to "Select type", click the gear and pick
-   **Web app**.
-4. Set **Execute as** to **Me** and **Who has access** to **Anyone**, then click
-   **Deploy**. Google asks you to allow access the first time (click **Advanced →
-   Go to project** if it warns that the app isn't verified; it's your own script).
-5. Copy the **Web app URL**. It ends in `/exec`.
-6. In Blockcraft, open **Multiplayer** and paste that link into **Server address**.
-   Give the same link to your friends: everyone pastes it in, then one player hosts
-   and the others join with the code, as above.
-
-If **Anyone** isn't in the list (some school Google accounts only allow people in
-your school), pick **Anyone within** your school instead. Then everyone has to be
-signed in to their school Google account in the browser. The game notices this kind
-of link and connects through the sign-in automatically.
-
-This game already has a school script built in (`DEFAULT_SERVER` in `src/net.js`),
-so on the GitHub Pages site you can leave **Server address** empty: sign in to your
-school Google account, open Multiplayer, and host or join.
-
-**Changing the script later:** don't make a new deployment, because that gives a new
-link. Instead, paste the new code, click **Deploy → Manage deployments**, click the
-pencil, set **Version** to **New version**, and click **Deploy**. The link stays the
-same.
-
-Through Apps Script, other players' movement updates about 2 or 3 times a second
-instead of 10, so they move a little jerkily. Block edits, chat and hits arrive within
-about half a second. It's meant for a handful of friends, not a big server.
+- **Your own broker:** any MQTT broker's WebSocket address that ends in `/mqtt`, like
+  `wss://broker.example.com:8884/mqtt`.
+- **The Blockcraft server** (`server.js`), the most reliable option. Put it on
+  [Render](https://render.com) for free: sign in with GitHub, click **New →
+  Blueprint**, pick this repository (Render reads `render.yaml`) and click **Apply**.
+  After a few minutes you get a link like `https://blockcraft-xxxx.onrender.com`. Open
+  it directly or paste it into **Server address**. Render's free plan puts the server
+  to sleep after 15 minutes without players, so the first connection then takes up to
+  a minute. To run it on your own computer: `npm install`, then `npm start`.
+- **Google Apps Script** ([`relay/Code.gs`](relay/Code.gs)): paste it into a new
+  project at [script.google.com](https://script.google.com), click **Deploy → New
+  deployment → Web app**, set **Who has access** to **Anyone**, and paste the `/exec`
+  link. It's slower (movement updates 2 or 3 times a second). A script shared only
+  within a school usually doesn't work, because school Chromebooks don't send the
+  Google sign-in from the game's page.
 
 What's shared: player movement, every block placed or broken (including explosions),
 chat, hits and the time of day (the host's clock; only the host can sleep through the
@@ -218,6 +192,8 @@ src/
   inventory.js            Stacks and Minecraft click rules
   ui.js                   HUD, container screens, map, menus
   net.js                  Multiplayer client: rooms, other players, shared edits, chat
+  mqtt.js                 Multiplayer through public MQTT brokers (the GitHub Pages default)
+  relay.js                Multiplayer through the Google Apps Script relay (relay/Code.gs)
   input.js, audio.js      Keyboard/mouse with pointer lock; procedural sound
 ```
 

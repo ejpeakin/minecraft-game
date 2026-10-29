@@ -4,10 +4,15 @@
 import * as THREE from './three.js';
 import { buildFigure } from './entities.js';
 import { RelaySocket, isRelayUrl } from './relay.js';
+import { MqttSocket, isMqttUrl } from './mqtt.js';
 
-// The game's own Apps Script relay (relay/Code.gs, deployed for Seton Catholic
-// accounts), used on GitHub Pages when Options leaves Server address empty.
-export const DEFAULT_SERVER = 'https://script.google.com/a/macros/setoncatholic.org/s/AKfycbx1Cftq4ROCI7eR7XJt8Bgl80Pnp3_ScwXocEPMnBkrqdtw45ptKq9TrALTRZeuOqbKFQ/exec';
+// What GitHub Pages uses when Server address is empty: the free public MQTT brokers
+// (src/mqtt.js), which school networks let through.
+export const DEFAULT_SERVER = 'mqtt';
+
+// The Apps Script relay this game used before MQTT. A saved copy of it in Server
+// address is cleared so those players move to MQTT too.
+export const OLD_SCHOOL_RELAY = 'https://script.google.com/a/macros/setoncatholic.org/s/AKfycbx1Cftq4ROCI7eR7XJt8Bgl80Pnp3_ScwXocEPMnBkrqdtw45ptKq9TrALTRZeuOqbKFQ/exec';
 
 const SEND_INTERVAL = 0.1; // seconds between position updates
 const TIME_INTERVAL = 5; // seconds between the host's clock broadcasts
@@ -135,10 +140,11 @@ export class Net {
   serverUrl() {
     let base = String(this.game.settings.serverUrl ?? '').trim();
     if (!base) {
-      // Static hosts can't run server.js: use the built-in relay.
+      // Static hosts can't run server.js: use the public MQTT brokers.
       if (/\.github\.io$|claude\.ai$|claudeusercontent/.test(location.hostname) || location.protocol === 'file:') base = DEFAULT_SERVER;
       else base = location.origin;
     }
+    if (isMqttUrl(base)) return base;
     if (!/^[a-z]+:\/\//i.test(base)) base = `https://${base}`;
     if (isRelayUrl(base)) return base; // Google Apps Script relay: plain HTTPS
     const url = new URL(base);
@@ -156,7 +162,7 @@ export class Net {
     this.leave();
     return new Promise((resolve, reject) => {
       let settled = false;
-      const ws = isRelayUrl(url) ? new RelaySocket(url, this) : new WebSocket(url);
+      const ws = isMqttUrl(url) ? new MqttSocket(url, this) : isRelayUrl(url) ? new RelaySocket(url, this) : new WebSocket(url);
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
