@@ -28,9 +28,10 @@ mouse, and a browser with WebGL 2.
 
 | Key | Action |
 | --- | --- |
-| W A S D | Move (double-tap W, or hold R or Ctrl, to sprint) |
+| W A S D | Move (double-tap W to sprint) |
 | Space | Jump, swim up; creative: double-tap to fly |
-| Shift | Sneak (won't walk off edges), fly down, stand up from a cushion |
+| Shift | Sprint (creative: fly faster) |
+| C | Sneak (won't walk off edges), fly down, stand up from a cushion |
 | Left mouse | Mine, attack |
 | Right mouse | Place, use, eat (hold), sit on cushions, sleep in straw beds |
 | Middle mouse | Pick block (creative) |
@@ -88,7 +89,7 @@ can, and click outside the window to throw the held stack.
   **explorer map** pointing to the next camp. Camps are most common in Dappled Forests.
 - **Straw beds** let you sleep through the night once and set your respawn point, then
   crumble. Craft them from straw (from tall grass) and planks.
-- **Cushions** in 16 colors: right-click to sit, Shift to get up.
+- **Cushions** in 16 colors: right-click to sit, C to get up.
 - **Campfires** give light and smoke, and cook raw meat you put on them.
 - **16-color wool and concrete**, each with slabs and stairs. Dyes come from flowers,
   red shrubs, shelf mushrooms, smelted cactus and coal; eight white wool or concrete
