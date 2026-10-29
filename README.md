@@ -145,8 +145,19 @@ host needs to set it up, once:
 
 If **Anyone** isn't in the list (some school Google accounts only allow people in
 your school), pick **Anyone within** your school instead. Then everyone has to be
-signed in to their school Google account in the browser. The game notices this kind
-of link and connects through the sign-in automatically.
+signed in to their school Google account. School Chromebooks don't send that sign-in
+from the game's page to Google, so the game goes through the script's own page
+instead, which is signed in:
+
+- When you host or join, the game opens the script's page in a small pop-up window.
+  Once it says **Connected**, go back to the game and keep the pop-up open while you
+  play.
+- If pop-ups are blocked, or the pop-up just shows a **Play Blockcraft** button, open
+  the script's link in a tab yourself and click **Play Blockcraft**. Play in the tab
+  it opens, and keep the script's tab open.
+
+If you use your own copy of the game, change `GAME_URL` at the top of `Code.gs` to
+your game's address so the Play button opens it.
 
 This game already has a school script built in (`DEFAULT_SERVER` in `src/net.js`),
 so on the GitHub Pages site you can leave **Server address** empty: sign in to your

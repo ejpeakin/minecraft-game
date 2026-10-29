@@ -3,8 +3,8 @@
 // For networks that block game servers (school Chromebooks): Google Apps Script runs
 // on Google's own servers, so it's usually reachable when nothing else is. Setup is in
 // the README ("Multiplayer at school"): paste this file into a new Apps Script
-// project, deploy it as a web app that anyone can access, and paste the /exec link
-// into Blockcraft's Multiplayer → Server address box.
+// project, deploy it as a web app, and paste the /exec link into Blockcraft's
+// Multiplayer → Server address box.
 //
 // It's a small message board per game code. Every player calls it about twice a
 // second with their position and any messages to send (block edits, chat, hits),
@@ -17,12 +17,20 @@ var STALE_PLAYER_MS = 20000;
 var MAX_OUT = 60;
 var MAX_BACKLOG = 200;
 
+// Where the game lives. The script's own page (open the /exec link) has a Play button
+// that opens it.
+var GAME_URL = 'https://ejpeakin.github.io/minecraft-game/';
+
 function doGet(e) {
   var p = (e && e.parameter) || {};
+  if (!p.q && !p.cb && !p.ping) {
+    return HtmlService.createHtmlOutput(PAGE.join('\n').replace('%GAME_URL%', JSON.stringify(GAME_URL)))
+      .setTitle('Blockcraft school server')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
   var reply = p.q ? handle(p.q) : { ok: true, app: 'blockcraft-relay' };
-  // With ?cb=name the reply comes back as a script (JSONP). The game uses that when the
-  // script only lets in people from your school: a script tag carries the player's
-  // Google sign-in, a plain fetch from another site doesn't.
+  // With ?cb=name the reply comes back as a script (JSONP), which carries the player's
+  // Google sign-in where the browser allows third-party cookies.
   if (/^[A-Za-z_$][\w$]{0,40}$/.test(String(p.cb || ''))) {
     return ContentService.createTextOutput(p.cb + '(' + JSON.stringify(reply) + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
@@ -32,6 +40,69 @@ function doGet(e) {
 function doPost(e) {
   return json(handle(e && e.postData ? e.postData.contents : ''));
 }
+
+// Called from the page below through google.script.run.
+function relay(text) {
+  return JSON.stringify(handle(text));
+}
+
+// The script's own page. A script shared only within a school needs the player's
+// Google sign-in, and school Chromebooks don't send it to other sites. This page is
+// signed in, so it acts as a bridge: the game talks to it with postMessage and it
+// calls relay() for the game. It works whichever opened the other: the game opens it
+// as a pop-up, or its Play button opens the game.
+var PAGE = [
+  '<!doctype html>',
+  '<meta charset="utf-8">',
+  '<style>',
+  'body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #2b2118; color: #eee; font: 18px/1.4 system-ui, sans-serif; text-align: center; }',
+  'main { padding: 24px; max-width: 420px; }',
+  'h1 { font-size: 22px; margin: 0 0 8px; }',
+  'button { font: inherit; font-weight: 600; padding: 10px 28px; border: 2px solid #000; background: #6c9b3c; color: #fff; cursor: pointer; }',
+  'p { color: #cfc6b8; }',
+  '</style>',
+  '<main>',
+  '<h1>Blockcraft school server</h1>',
+  '<p id="status">Click Play to open the game. Keep this tab open while you play: multiplayer goes through it.</p>',
+  '<button id="play">Play Blockcraft</button>',
+  '</main>',
+  '<script>',
+  'var GAME_URL = %GAME_URL%;',
+  'var peers = [];',
+  'var note = document.getElementById("status");',
+  'var play = document.getElementById("play");',
+  'function connected() {',
+  '  note.textContent = "Connected to the game. Go back to the game’s tab and keep this one open while you play.";',
+  '  play.hidden = true;',
+  '}',
+  'function findOpener() { try { return window.top.opener; } catch (err) { return null; } }',
+  'window.addEventListener("message", function (e) {',
+  '  var d = e.data;',
+  '  if (!d || typeof d !== "object" || !d.blockcraft || peers.indexOf(e.source) < 0) return;',
+  '  if (d.blockcraft === "hello") {',
+  '    e.source.postMessage({ blockcraft: "bridge" }, e.origin);',
+  '    connected();',
+  '  } else if (d.blockcraft === "call") {',
+  '    google.script.run',
+  '      .withSuccessHandler(function (body) { e.source.postMessage({ blockcraft: "reply", n: d.n, body: body }, e.origin); })',
+  '      .withFailureHandler(function (err) { e.source.postMessage({ blockcraft: "reply", n: d.n, error: String((err && err.message) || err) }, e.origin); })',
+  '      .relay(String(d.body));',
+  '  }',
+  '});',
+  '// Opened by the game as a pop-up: say hello.',
+  'var op = findOpener();',
+  'if (op) {',
+  '  peers.push(op);',
+  '  op.postMessage({ blockcraft: "bridge" }, "*");',
+  '  note.textContent = "Connecting to the game…";',
+  '}',
+  'play.onclick = function () {',
+  '  var w = window.open(GAME_URL, "_blank");',
+  '  if (w) peers.push(w);',
+  '  note.textContent = "The game opened in a new tab. Keep this tab open while you play.";',
+  '};',
+  '</script>',
+];
 
 function handle(text) {
   var req;

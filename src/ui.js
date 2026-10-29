@@ -346,10 +346,14 @@ export class UI {
     this.mpHint = () => {
       const builtIn = !g.settings.serverUrl && g.net.serverUrl();
       $('mp-server-hint').textContent = builtIn === DEFAULT_SERVER
-        ? 'Using the game\u2019s school server: be signed in to your school Google account. Friends open this same page to join.'
+        ? 'Using the game\u2019s school server: be signed in to your school Google account. When you host or join, a small school server window opens: keep it open while you play.'
         : builtIn
         ? 'Using this page’s server. Friends open the same link to join.'
         : 'Paste your game\u2019s server address: the Google Apps Script link (works at school) or a Render link. See the README for setup.';
+      // School-only scripts: a way to start from the script's page (see src/relay.js).
+      const url = g.net.serverUrl() ?? '';
+      $('mp-server-page').hidden = !url.includes('/a/macros/');
+      $('mp-server-link').href = url;
     };
     this.mpHint();
     if (!this.mpBound) {
