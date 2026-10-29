@@ -229,6 +229,7 @@ button, input, select { font: inherit; }
 #chat-input:focus { outline: none; border-color: #fff; }
 .code-input { width: 7em; text-transform: uppercase; letter-spacing: 4px; text-align: center; background: #000; color: #fff; border: 2px solid #a0a0a0; padding: 4px 8px; user-select: text; }
 .mp-hint { margin: 0; color: #a0a0a0; font-size: 18px; }
+.mp-hint a { color: #ffe066; }
 .mp-status { margin: 0; min-height: 22px; color: #ffcf7a; }
 #multiplayer-screen h3 { margin: 6px 0 0; font-weight: normal; }
 
