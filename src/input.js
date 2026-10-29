@@ -33,7 +33,7 @@ export class Input {
       }
       this.down.add(e.code);
       if (this.onKey?.(e.code, e)) e.preventDefault();
-      else if (this.locked && ['Space', 'Tab', 'ControlLeft', 'KeyQ', 'F1', 'F3'].includes(e.code)) e.preventDefault();
+      else if (this.locked && ['Space', 'Tab', 'ShiftLeft', 'KeyC', 'KeyQ', 'F1', 'F3'].includes(e.code)) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.down.delete(e.code));
     window.addEventListener('blur', () => {

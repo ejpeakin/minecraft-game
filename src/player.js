@@ -136,7 +136,7 @@ export class Player {
     const key = (k) => active && input.isDown(k);
     if (this.seated) {
       const [sx, sy, sz] = this.seated;
-      if (key('ShiftLeft') || key('ShiftRight') || !BLOCKS[world.getBlock(sx, sy, sz)].interact) {
+      if (key('KeyC') || !BLOCKS[world.getBlock(sx, sy, sz)].interact) {
         this.seated = null;
         this.y = sy + 0.3;
       } else {
@@ -157,8 +157,10 @@ export class Player {
       this.vy = 0;
     }
     if (!creative) this.flying = false;
-    this.sneaking = !this.flying && (key('ShiftLeft') || key('ShiftRight'));
-    if (fwd > 0 && (key('ControlLeft') || key('KeyR') || input.doubleW) && !this.sneaking && (this.food > 6 || creative)) this.sprinting = true;
+    // Shift sprints (or flies faster); C sneaks, flies down and stands up from a cushion.
+    const sprintKey = key('ShiftLeft') || key('ShiftRight');
+    this.sneaking = !this.flying && key('KeyC');
+    if (fwd > 0 && (sprintKey || input.doubleW) && !this.sneaking && (this.food > 6 || creative)) this.sprinting = true;
     if (fwd <= 0 || this.sneaking || (this.collidedH && !this.flying) || (this.food <= 6 && !creative)) this.sprinting = false;
 
     const hw = this.w / 2;
@@ -187,7 +189,7 @@ export class Player {
     if (this.flying) {
       let vyWant = 0;
       if (key('Space')) vyWant += speed * 0.75;
-      if (key('ShiftLeft') || key('ShiftRight')) vyWant -= speed * 0.75;
+      if (key('KeyC')) vyWant -= speed * 0.75;
       this.vy += (vyWant - this.vy) * (1 - Math.exp(-8 * dt));
       this.sneaking = false;
     } else if (this.inWater || this.inLava) {
@@ -601,7 +603,7 @@ export class Player {
       case 'sit':
         this.seated = [t.x, t.y, t.z];
         this.vx = this.vy = this.vz = 0;
-        game.ui.toast('Press Shift to stand up');
+        game.ui.toast('Press C to stand up');
         return true;
       case 'bed':
         game.trySleep(t.x, t.y, t.z);
