@@ -1,7 +1,7 @@
 // The player: look and movement (walk, sprint, sneak, swim, fly, sit), vitals
 // (health, hunger, saturation, air, fall damage), and every way of acting on the
 // world (mining, attacking, placing, eating, using blocks and items).
-import { BLOCKS, B, SOLID, FLUID, FACING_DIR, OPAQUE, toggled } from './blocks.js';
+import { BLOCKS, B, SOLID, FLUID, FACING_DIR, OPAQUE, toggled, partnerOffset } from './blocks.js';
 import { ITEMS, breakTime, toolOf, attackDamage, SMELTING } from './items.js';
 import { Inventory } from './inventory.js';
 import { moveEntity, fluidIn, raycast, touchesBlock } from './physics.js';
@@ -488,11 +488,12 @@ export class Player {
     const { x, y, z, block: b } = this.target;
     world.ensureLoot(x, y, z);
     const below = world.getBlock(x, y - 1, z);
-    // In creative a door's other half goes quietly (in survival it pops off and drops
-    // the door).
-    if (b.door && !survival) {
-      const dy = b.door === 'lower' ? 1 : -1;
-      if (BLOCKS[world.getBlock(x, y + dy, z)].baseId === b.partnerBase) world.setBlock(x, y + dy, z, 0, { silent: true });
+    // In creative the other half of a door or bed goes quietly (in survival it pops
+    // off and drops the item).
+    const pair = partnerOffset(b);
+    if (pair && !survival) {
+      const [ox, oy, oz] = pair;
+      if (BLOCKS[world.getBlock(x + ox, y + oy, z + oz)].baseId === b.partnerBase) world.setBlock(x + ox, y + oy, z + oz, 0, { silent: true });
     }
     let replacement = 0;
     if (b.id === B.ice && survival && below !== 0) replacement = B.water;
@@ -547,6 +548,17 @@ export class Player {
       game.ui.openMap(held);
       return true;
     }
+    if (item?.bucket) return this.useBucket(item);
+    if (t && item?.tool?.type === 'hoe') return this.till(t);
+    if (t && item?.plants) {
+      // Seeds go on top of farmland.
+      const above = world.getBlock(t.x, t.y + 1, t.z);
+      if (t.ny !== 1 || !t.block.farmland || above !== 0) return false;
+      world.setBlock(t.x, t.y + 1, t.z, B[item.plants]);
+      game.audio.block('grass', 'place', { x: t.x, y: t.y + 1, z: t.z }, this);
+      if (this.mode === 'survival') this.inventory.consumeHeld(1);
+      return true;
+    }
     if (!t || !item || item.block === undefined) return false;
 
     let id = item.block;
@@ -594,7 +606,7 @@ export class Player {
       id += wall;
     } else if (b.shape === 'trapdoor') {
       id += (t.ny === 0 ? wall : toward) + (upper ? 8 : 0);
-    } else if (b.door || b.shape === 'gate') {
+    } else if (b.door || b.bed || b.shape === 'gate') {
       id += lookFacing;
     } else if (b.variants === 'facing') {
       if (b.shelf) {
@@ -608,6 +620,17 @@ export class Player {
     if (id === B.torch && !SOLID[below] && ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => OPAQUE[world.getBlock(px + dx, py, pz + dz)])) return false;
     if (b.carpet && (below === 0 || FLUID[below])) return false;
     if (SOLID[id] && this.blocksEntity(px, py, pz)) return false;
+    if (b.bed) {
+      // The head goes one block further along the way you're looking.
+      const [fx, fz] = FACING_DIR[lookFacing];
+      const hx = px + fx, hz = pz + fz;
+      const there = world.getBlock(hx, py, hz);
+      if (!(there === 0 || (BLOCKS[there].replaceable && !FLUID[there])) || !SOLID[below] || !SOLID[world.getBlock(hx, py - 1, hz)]) return false;
+      if (this.blocksEntity(px, py, pz) || this.blocksEntity(hx, py, hz)) return false;
+      world.setBlock(px, py, pz, id);
+      world.setBlock(hx, py, hz, b.partnerBase + lookFacing);
+      return placed(px, py, pz);
+    }
     if (b.door) {
       // Doors stand on solid ground and need room for their top half.
       const above = world.getBlock(px, py + 1, pz);
@@ -619,6 +642,56 @@ export class Player {
     }
     world.setBlock(px, py, pz, id);
     return placed(px, py, pz);
+  }
+
+  // A hoe turns grass or dirt with open air above into farmland.
+  till(t) {
+    const world = this.game.world;
+    const above = world.getBlock(t.x, t.y + 1, t.z);
+    if (t.ny !== 1 || ![B.grass, B.dirt, B.snowy_grass].includes(t.id)) return false;
+    if (above !== 0 && !(BLOCKS[above].replaceable && !FLUID[above])) return false;
+    if (above) world.setBlock(t.x, t.y + 1, t.z, 0);
+    world.setBlock(t.x, t.y, t.z, world.hasWaterNear(t.x, t.y, t.z) ? B.wet_farmland : B.farmland);
+    this.game.audio.block('gravel', 'place', { x: t.x, y: t.y, z: t.z }, this);
+    if (this.mode === 'survival') this.inventory.damageHeld(1);
+    return true;
+  }
+
+  // Buckets scoop up a water or lava source and pour it out again.
+  useBucket(item) {
+    const game = this.game;
+    const world = game.world;
+    const [dx, dy, dz] = this.lookDir();
+    const reach = this.mode === 'creative' ? 5.5 : 4.6;
+    const survival = this.mode === 'survival';
+    if (item.bucket === 'empty') {
+      const hit = raycast(world, this.x, this.y + this.eyeHeight, this.z, dx, dy, dz, reach, { fluids: true });
+      if (!hit || !FLUID[hit.id] || !BLOCKS[hit.id].source) return false;
+      const kind = FLUID[hit.id] === 1 ? 'water' : 'lava';
+      world.setBlock(hit.x, hit.y, hit.z, 0);
+      game.audio.splash(hit, this);
+      if (survival) {
+        const filled = { id: `${kind}_bucket`, count: 1 };
+        if (this.held.count === 1) this.inventory.held = filled;
+        else {
+          this.inventory.consumeHeld(1);
+          const left = this.inventory.add(filled);
+          if (left) game.entities.dropItem(this.x, this.y + 1, this.z, left);
+        }
+      }
+      return true;
+    }
+    const t = this.target;
+    if (!t) return false;
+    let px = t.x + t.nx, py = t.y + t.ny, pz = t.z + t.nz;
+    if (BLOCKS[t.id].replaceable) { px = t.x; py = t.y; pz = t.z; }
+    const cur = world.getBlock(px, py, pz);
+    if (py < 0 || py >= HEIGHT || !(cur === 0 || BLOCKS[cur].replaceable)) return false;
+    world.setBlock(px, py, pz, item.bucket === 'water' ? B.water : B.lava);
+    if (item.bucket === 'water') world.hydrateAround(px, py, pz);
+    game.audio.splash({ x: px, y: py, z: pz }, this);
+    if (survival) this.inventory.held = { id: 'bucket', count: 1 };
+    return true;
   }
 
   blocksEntity(x, y, z) {
@@ -686,7 +759,7 @@ export class Player {
   pickBlock() {
     if (this.mode !== 'creative' || !this.target) return;
     const b = this.target.block;
-    const name = BLOCKS[b.baseId].item ?? b.drop ?? (b.door ? BLOCKS[b.partnerBase].item : null);
+    const name = BLOCKS[b.baseId].item ?? b.drop ?? (b.partnerBase !== undefined ? BLOCKS[b.partnerBase].item : null);
     if (!name || !ITEMS[name]) return;
     const inv = this.inventory;
     const found = inv.slots.findIndex((s, i) => i < 9 && s?.id === name);

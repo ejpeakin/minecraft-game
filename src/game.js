@@ -494,11 +494,16 @@ export class Game {
       world.time = 0;
       world.day += 1;
       this.net.send({ t: 'time', time: 0 });
-      this.net.capture(() => world.setBlock(x, y, z, 0));
-      this.particles.burst(x, y, z, [0.86, 0.74, 0.36], 20);
       fade.style.opacity = 0;
       this.sleeping = false;
-      this.ui.toast('You slept through the night. The straw bed crumbled. Respawn point set.', 4);
+      // Straw beds are good for one night; real beds last.
+      if (world.getBlock(x, y, z) === B.straw_bed) {
+        this.net.capture(() => world.setBlock(x, y, z, 0));
+        this.particles.burst(x, y, z, [0.86, 0.74, 0.36], 20);
+        this.ui.toast('You slept through the night. The straw bed crumbled. Respawn point set.', 4);
+      } else {
+        this.ui.toast('You slept through the night. Respawn point set.', 4);
+      }
     }, 1400);
   }
 

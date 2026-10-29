@@ -32,6 +32,12 @@ item('cooked_mutton', { label: 'Cooked Mutton', food: { hunger: 6, saturation: 9
 item('rotten_flesh', { label: 'Rotten Flesh', food: { hunger: 4, saturation: 0.8 } });
 item('mushroom_stew', { label: 'Mushroom Stew', maxStack: 1, food: { hunger: 6, saturation: 7.2, leaves: 'bowl' } });
 item('flint_and_steel', { label: 'Flint and Steel', maxStack: 1, durability: 64, igniter: true });
+item('wheat_seeds', { label: 'Wheat Seeds', plants: 'wheat_0' });
+item('wheat', { label: 'Wheat' });
+item('bread', { label: 'Bread', food: { hunger: 5, saturation: 6 } });
+item('bucket', { label: 'Bucket', maxStack: 16, bucket: 'empty' });
+item('water_bucket', { label: 'Water Bucket', maxStack: 1, bucket: 'water' });
+item('lava_bucket', { label: 'Lava Bucket', maxStack: 1, bucket: 'lava' });
 item('map', { label: 'Map', maxStack: 1, map: true });
 item('explorer_map', { label: 'Explorer Map', maxStack: 1, map: true });
 for (const c of ['red', 'yellow', 'orange', 'green', 'lime', 'brown', 'black']) {
@@ -45,8 +51,8 @@ export const TIERS = {
   golden: { label: 'Golden', level: 0, speed: 12, durability: 32, damage: 0, material: 'gold_ingot' },
   diamond: { label: 'Diamond', level: 3, speed: 8, durability: 1561, damage: 3, material: 'diamond' },
 };
-const TOOL_BASE = { pickaxe: 2, axe: 3, shovel: 1.5, sword: 4 };
-const TOOL_LABEL = { pickaxe: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword' };
+const TOOL_BASE = { pickaxe: 2, axe: 3, shovel: 1.5, sword: 4, hoe: 1 };
+const TOOL_LABEL = { pickaxe: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword', hoe: 'Hoe' };
 
 for (const [tier, t] of Object.entries(TIERS)) {
   for (const type of Object.keys(TOOL_BASE)) {
@@ -155,7 +161,13 @@ for (const [tier, t] of Object.entries(TIERS)) {
   shaped(['MM', 'MS', '.S'], { M, S: 'stick' }, `${tier}_axe`);
   shaped(['M', 'S', 'S'], { M, S: 'stick' }, `${tier}_shovel`);
   shaped(['M', 'M', 'S'], { M, S: 'stick' }, `${tier}_sword`);
+  shaped(['MM', '.S', '.S'], { M, S: 'stick' }, `${tier}_hoe`);
 }
+shaped(['WWW'], { W: 'wheat' }, 'bread');
+shaped(['WWW', 'WWW', 'WWW'], { W: 'wheat' }, 'hay_bale');
+shaped(['H'], { H: 'hay_bale' }, 'wheat', 9);
+shaped(['I.I', '.I.'], { I: 'iron_ingot' }, 'bucket');
+shaped(['WWW', 'PPP'], { W: 'red_wool', P: PLANKS }, 'red_bed');
 
 const accepts = (key, name) => (Array.isArray(key) ? key.includes(name) : key === name);
 
@@ -277,7 +289,17 @@ export function blockDrops(block, tool, rng) {
   }
   if (block.id === B.gravel) return [{ id: rng() < 0.12 ? 'flint' : 'gravel', count: 1 }];
   if (block.id === B.dead_bush) return rng() < 0.6 ? [{ id: 'stick', count: 1 + Math.floor(rng() * 2) }] : [];
-  if (block.id === B.tall_grass) return rng() < 0.3 ? [{ id: 'straw', count: 1 }] : [];
+  if (block.id === B.tall_grass) {
+    const out = [];
+    if (rng() < 0.3) out.push({ id: 'straw', count: 1 });
+    if (rng() < 0.125) out.push({ id: 'wheat_seeds', count: 1 });
+    return out;
+  }
+  if (block.crop >= 0) {
+    // Ripe wheat gives the grain and some seeds back; unripe just the seed.
+    if (block.crop < 7) return [{ id: 'wheat_seeds', count: 1 }];
+    return [{ id: 'wheat', count: 1 }, { id: 'wheat_seeds', count: 1 + Math.floor(rng() * 3) }];
+  }
   if (!block.drop) return [];
   return [{ id: block.drop, count: block.dropCount }];
 }

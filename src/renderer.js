@@ -306,7 +306,7 @@ export class ChunkRenderer {
           const rot = FACE_ROT[id * 6 + f];
           const uvs = pts.map((p) => {
             let [u, v] = uvOf(f, p[0], p[1], p[2]);
-            if (rot) [u, v] = [v, 1 - u];
+            for (let k = 0; k < rot; k++) [u, v] = [v, 1 - u];
             return [u, v];
           });
           quad(pts, uvs, FACE_TEX[id * 6 + f], shadeOf[f]);

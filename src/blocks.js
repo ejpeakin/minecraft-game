@@ -17,7 +17,7 @@ export const FACING_DIR = [[0, 1], [-1, 0], [0, -1], [1, 0]];
 export const SHAPE = {
   NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, CACTUS: 4, LIQUID: 5,
   SLAB: 6, STAIRS: 7, CUSHION: 8, BED: 9, FENCE: 10, CAMPFIRE: 11, SHELF: 12,
-  DOOR: 13, TRAPDOOR: 14, LADDER: 15, PANE: 16, GATE: 17, CARPET: 18,
+  DOOR: 13, TRAPDOOR: 14, LADDER: 15, PANE: 16, GATE: 17, CARPET: 18, FARMLAND: 19,
 };
 export const PASS = { OPAQUE: 0, CUTOUT: 1, WATER: 2 };
 
@@ -174,6 +174,21 @@ for (const { name, ...d } of DEFS.filter((x) => x.shape === 'slab' || x.shape ==
   }
 }
 
+// --- Farming and beds ----------------------------------------------------------------
+// Farmland comes from a hoe on grass or dirt; wet farmland (water within 4 blocks)
+// grows crops faster. Wheat has eight growth stages, each its own block.
+const FARMLAND = { shape: 'farmland', ...PARTIAL, hardness: 0.6, sound: 'gravel', tool: 'shovel', drop: 'dirt', noItem: true, farmland: true };
+def('farmland', { label: 'Farmland', tex: { top: 'farmland', bottom: 'dirt', side: 'dirt' }, ...FARMLAND });
+def('wet_farmland', { label: 'Farmland', tex: { top: 'farmland_wet', bottom: 'dirt', side: 'dirt' }, ...FARMLAND, wet: true });
+for (let stage = 0; stage < 8; stage++) {
+  def(`wheat_${stage}`, { label: 'Wheat Crops', tex: `wheat_stage_${stage}`, shape: 'cross', solid: false, opaque: false, pass: 'cutout', hardness: 0, sound: 'grass', crop: stage, washable: true, noItem: true, drop: null });
+}
+def('hay_bale', { label: 'Hay Bale', tex: { top: 'hay_bale_top', bottom: 'hay_bale_top', side: 'hay_bale_side' }, hardness: 0.5, sound: 'grass', variants: 'axis' });
+// A two-block bed: the foot is where you place it, the head one block further on.
+const BED = { shape: 'bed', ...PARTIAL, hardness: 0.2, sound: 'cloth', variants: 'facing', interact: 'bed' };
+def('red_bed', { label: 'Red Bed', tex: { top: 'red_bed_foot_top', bottom: 'oak_planks', side: 'red_bed_foot_side' }, ...BED, bed: 'foot' });
+def('red_bed_head', { label: 'Red Bed', tex: { top: 'red_bed_head_top', bottom: 'oak_planks', side: 'red_bed_head_side' }, ...BED, bed: 'head', noItem: true, drop: null });
+
 // Expand variant blocks into several ids. 'facing' → 4 ids (base faces +z);
 // 'axis' → 3 ids (0 = y, 1 = x, 2 = z); 'door' and 'gate' → 8 (facing + 4 * open);
 // 'trapdoor' → 16 (facing + 4 * open + 8 * top half).
@@ -235,6 +250,10 @@ for (const d of DEFS) {
       carpet: d.carpet ?? false,
       climbable: d.climbable ?? false,
       upside: d.upside ?? false,
+      bed: d.bed ?? null,
+      crop: d.crop ?? -1,
+      farmland: d.farmland ?? false,
+      wet: d.wet ?? false,
     });
     if (v === 0) BLOCK_ID[d.name] = id;
   }
@@ -254,6 +273,19 @@ for (const b of BLOCKS) {
   if (b.shape === 'stairs' && !b.upside) b.upsideBase = BLOCK_ID[`${b.name}_upside`];
   if (b.door === 'lower') b.partnerBase = BLOCK_ID[`${b.name}_top`];
   if (b.door === 'upper') b.partnerBase = BLOCK_ID[b.name.replace(/_top$/, '')];
+  if (b.bed === 'foot') b.partnerBase = BLOCK_ID[`${b.name}_head`];
+  if (b.bed === 'head') b.partnerBase = BLOCK_ID[b.name.replace(/_head$/, '')];
+}
+
+// Where the other half of a two-block block (door, bed) is, relative to this one.
+export function partnerOffset(b) {
+  if (b.door) return [0, b.door === 'lower' ? 1 : -1, 0];
+  if (b.bed) {
+    const [fx, fz] = FACING_DIR[b.facing];
+    const s = b.bed === 'foot' ? 1 : -1;
+    return [fx * s, 0, fz * s];
+  }
+  return null;
 }
 
 // A variant of a door, trapdoor or gate with open flipped.
@@ -303,6 +335,9 @@ export function setTextureLayers(layerOf) {
       } else if (b.axis === 2) {
         name = f >= 4 ? b.tex.top : b.tex.side;
         rot = f <= 1 ? 1 : f <= 3 ? 0 : 0;
+      } else if (b.bed && f === 2) {
+        // Turn the bed's top so the pillow lies at the head end.
+        rot = [2, 1, 0, 3][b.facing];
       }
       const layer = layerOf(name);
       if (layer === undefined) throw new Error(`Missing texture ${name} for ${b.name}`);
@@ -405,7 +440,9 @@ export function shapeBoxes(id, get, collide = false) {
     case SHAPE.CUSHION:
       return [[H, 0, H, 1 - H, 3 * H, 1 - H]];
     case SHAPE.BED:
-      return [[0, 0, 0, 1, 7 * H, 1]];
+      return [[0, 0, 0, 1, (b.bed ? 9 : 7) * H, 1]];
+    case SHAPE.FARMLAND:
+      return [[0, 0, 0, 1, 15 * H, 1]];
     case SHAPE.CAMPFIRE:
       return collide ? [[0, 0, 0, 1, 7 * H, 1]] : [
         [H, 0, 4 * H, 15 * H, 4 * H, 6 * H], [H, 0, 10 * H, 15 * H, 4 * H, 12 * H],
