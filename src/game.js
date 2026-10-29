@@ -25,7 +25,7 @@ const WORLD_KEY = (id) => `blockcraft.world.${id}`;
 const LOW_MEMORY = (navigator.deviceMemory ?? 8) <= 4;
 
 const DEFAULT_SETTINGS = {
-  renderDistance: LOW_MEMORY ? 4 : 6, safeGraphics: false, fov: 70, sensitivity: 1, brightness: 0.5, volume: 0.7, music: 0.4,
+  renderDistance: LOW_MEMORY ? 4 : 6, safeGraphics: false, fancyGraphics: true, fov: 70, sensitivity: 1, brightness: 0.5, volume: 0.7, music: 0.4,
   invertY: false, clouds: true, bobbing: true, peaceful: false, keepInventory: false,
 };
 
@@ -177,6 +177,10 @@ export class Game {
     this.audio.setVolume(this.settings.volume);
     this.audio.setMusicVolume(this.settings.music);
     this.chunkRenderer.shared.uBrightness.value = this.settings.brightness;
+    const fancy = this.settings.fancyGraphics ? 1 : 0;
+    this.chunkRenderer.shared.uFancy.value = fancy;
+    this.chunkRenderer.shared.uWave.value = fancy;
+    document.getElementById('vignette').style.opacity = fancy;
     setEntityBrightness(this.settings.brightness);
   }
 
@@ -673,7 +677,12 @@ export class Game {
     this.manageChunks();
     this.particles.update(dt, (x, y, z) => SOLID[world.getBlock(x, y, z)] && BLOCKS[world.getBlock(x, y, z)].shape === 'cube');
     this.updateCamera(dt);
-    this.sky.update(world.time, this.camera, dt, this.settings.clouds);
+    this.sky.update(world.time, this.camera, dt, this.settings.clouds, this.settings.fancyGraphics);
+    const shared = this.chunkRenderer.shared;
+    shared.uSunDir.value.copy(this.sky.sunDir);
+    shared.uSkyColor.value.set(...this.sky.fogColor);
+    const ft = shared.uTime.value;
+    shared.uFlicker.value = 0.96 + 0.025 * Math.sin(ft * 9.1) + 0.015 * Math.sin(ft * 23.7);
     this.updateFog();
     this.chunkRenderer.shared.uDaylight.value = this.sky.daylight;
     this.chunkRenderer.shared.uTime.value += dt;

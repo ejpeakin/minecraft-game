@@ -30,6 +30,7 @@ button, input, select { font: inherit; }
 /* --- HUD ------------------------------------------------------------------------- */
 #hud { position: absolute; inset: 0; pointer-events: none; }
 .tint { position: absolute; inset: 0; opacity: 0; transition: opacity 0.15s; }
+#vignette { background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.32)); transition: none; }
 #underwater { background: rgba(20, 50, 160, 0.32); }
 #inlava { background: rgba(255, 90, 0, 0.6); }
 #hurt { background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 0, 0, 0.55)); transition: opacity 0.05s; }

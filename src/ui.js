@@ -241,7 +241,7 @@ export class UI {
       });
     }
     this.rangeFormat = ranges;
-    const checks = [['s-safe', 'safeGraphics'], ['s-invert', 'invertY'], ['s-clouds', 'clouds'], ['s-bob', 'bobbing'], ['s-peaceful', 'peaceful'], ['s-keep', 'keepInventory']];
+    const checks = [['s-fancy', 'fancyGraphics'], ['s-safe', 'safeGraphics'], ['s-invert', 'invertY'], ['s-clouds', 'clouds'], ['s-bob', 'bobbing'], ['s-peaceful', 'peaceful'], ['s-keep', 'keepInventory']];
     for (const [id, key] of checks) {
       $(id).addEventListener('change', () => {
         s[key] = $(id).checked;

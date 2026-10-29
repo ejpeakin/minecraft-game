@@ -23,12 +23,17 @@ export class Sky {
     this.group = new THREE.Group();
     scene.add(this.group);
     this.domeMat = new THREE.ShaderMaterial({
-      uniforms: { uTop: { value: new THREE.Vector3() }, uHorizon: { value: new THREE.Vector3() }, uSunset: { value: new THREE.Vector4() } },
+      uniforms: {
+        uTop: { value: new THREE.Vector3() }, uHorizon: { value: new THREE.Vector3() }, uSunset: { value: new THREE.Vector4() },
+        uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uGlow: { value: new THREE.Vector3() },
+      },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-      fragmentShader: `uniform vec3 uTop; uniform vec3 uHorizon; uniform vec4 uSunset; varying vec3 vDir;
+      fragmentShader: `uniform vec3 uTop; uniform vec3 uHorizon; uniform vec4 uSunset; uniform vec3 uSunDir; uniform vec3 uGlow; varying vec3 vDir;
         void main(){ float h = clamp(vDir.y, -0.2, 1.0); vec3 c = mix(uHorizon, uTop, smoothstep(-0.05, 0.45, h));
           float s = max(0.0, dot(normalize(vec3(vDir.x, 0.0, vDir.z) + 1e-4), vec3(sign(uSunset.w), 0.0, 0.0)));
           c = mix(c, uSunset.rgb, uSunset.w == 0.0 ? 0.0 : pow(s, 3.0) * (1.0 - smoothstep(0.0, 0.5, h)) * abs(uSunset.w));
+          float sd = max(dot(normalize(vDir), uSunDir), 0.0);
+          c += uGlow * (pow(sd, 6.0) * 0.28 + pow(sd, 48.0) * 0.55);
           gl_FragColor = vec4(c, 1.0); }`,
       side: THREE.BackSide,
       depthWrite: false,
@@ -105,6 +110,12 @@ export class Sky {
     this.clouds.rotation.x = -Math.PI / 2;
     this.clouds.renderOrder = 2;
     this.group.add(this.clouds);
+    // Fancy clouds: a darker copy a few blocks below reads as thickness from underneath.
+    this.cloudUnderMat = this.cloudMat.clone();
+    this.cloudsUnder = new THREE.Mesh(this.clouds.geometry, this.cloudUnderMat);
+    this.cloudsUnder.rotation.x = -Math.PI / 2;
+    this.cloudsUnder.renderOrder = 2;
+    this.group.add(this.cloudsUnder);
     this.cloudOffset = 0;
 
     this.daylight = 1;
@@ -113,7 +124,7 @@ export class Sky {
     this.skyDarken = 0; // 0 day .. 11 night, for mob spawning light levels
   }
 
-  update(time, camera, dt, showClouds = true) {
+  update(time, camera, dt, showClouds = true, fancy = true) {
     const a = (time / DAY_TICKS) * Math.PI * 2;
     const e = Math.sin(a);
     const d = smoothstep(-0.2, 0.25, e);
@@ -134,6 +145,10 @@ export class Sky {
     const p = camera.position;
     this.group.position.copy(p);
     const sunDir = new THREE.Vector3(Math.cos(a), Math.sin(a), 0.15).normalize();
+    this.domeMat.uniforms.uSunDir.value.copy(sunDir);
+    const glow = fancy ? Math.max(0, Math.min(1, (e + 0.25) * 2.5)) : 0;
+    const warm = Math.max(0, 1 - Math.abs(e) / 0.4);
+    this.domeMat.uniforms.uGlow.value.set(glow, glow * lerp(0.95, 0.7, warm), glow * lerp(0.85, 0.42, warm));
     this.sun.position.copy(sunDir).multiplyScalar(400);
     this.sun.lookAt(0, 0, 0);
     this.moon.position.copy(sunDir).multiplyScalar(-400);
@@ -150,6 +165,9 @@ export class Sky {
     this.cloudTex.offset.set((p.x + this.cloudOffset) / 768, -p.z / 768);
     const cl = lerp(0.12, 1, d);
     this.cloudMat.color.setRGB(cl, cl, cl * 1.02, THREE.SRGBColorSpace);
+    this.cloudsUnder.visible = showClouds && fancy;
+    this.cloudsUnder.position.set(0, 109 - p.y, 0);
+    this.cloudUnderMat.color.setRGB(cl * 0.8, cl * 0.8, cl * 0.84, THREE.SRGBColorSpace);
     this.sunDir = sunDir;
   }
 }
