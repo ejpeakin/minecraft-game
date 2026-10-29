@@ -184,6 +184,7 @@ export class Game {
   // stale window size at startup, which leaves the 3D view blank, so this also runs
   // from a ResizeObserver and a periodic check in the loop.
   resize() {
+    if (!this.canvas.clientWidth || !this.canvas.clientHeight) this.forceCanvasLayout();
     const w = Math.max(1, this.canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth);
     const h = Math.max(1, this.canvas.clientHeight || window.innerHeight || document.documentElement.clientHeight);
     this.viewSize = [w, h];
@@ -363,6 +364,15 @@ export class Game {
     info.textContent = `${meta ? `${meta.name} · seed ${meta.seed} · saved` : ''}\nVersion ${window.BLOCKCRAFT_VERSION ?? 'dev'}\n${this.diagnostics()}`;
   }
 
+  // The game view has been seen laid out at 0×0 (drawing fine, but invisible). Pin it
+  // to the full window with inline !important styles, the way a full-page game would.
+  forceCanvasLayout() {
+    const s = this.canvas.style;
+    const props = { display: 'block', position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh', visibility: 'visible', opacity: '1' };
+    for (const [k, v] of Object.entries(props)) s.setProperty(k, v, 'important');
+    this.layoutForced = true;
+  }
+
   // One line of graphics facts for the pause menu (and bug reports).
   diagnostics() {
     const gl = this.renderer.getContext();
@@ -372,6 +382,7 @@ export class Game {
     return [
       `${this.safe ? 'Safe' : 'Standard'} graphics (WebGL ${this.renderer.capabilities.isWebGL2 ? 2 : 1}) · ${this.gpu}`,
       `View ${this.canvas.clientWidth}×${this.canvas.clientHeight}, buffer ${gl.drawingBufferWidth}×${gl.drawingBufferHeight} · drawn ${r.calls} calls`,
+      this.canvasLayout(),
       `Y ${p.y.toFixed(1)} · light sky ${head.sky}, block ${head.block} · ${this.sky.daylight > 0.5 ? 'day' : 'night'}${this.selfTestResult ? ` · self-test ${this.selfTestResult}` : ''}`,
     ].join('\n');
   }
@@ -536,6 +547,13 @@ export class Game {
 
   // Every two seconds in daylight under open sky, sample the top of the picture: it
   // should be sky. Three black samples in a row means nothing is reaching the screen.
+  // How the browser laid out the game view, for the pause menu.
+  canvasLayout() {
+    const cs = getComputedStyle(this.canvas);
+    const box = this.canvas.getBoundingClientRect();
+    return `Canvas ${cs.display}, ${cs.visibility}, ${cs.position}, ${Math.round(box.width)}×${Math.round(box.height)} at ${Math.round(box.left)},${Math.round(box.top)}${this.layoutForced ? ', forced' : ''}${this.canvas.isConnected ? '' : ', detached'}`;
+  }
+
   // Draw a known picture and read it back: a cleared background, a plain colored square
   // and a stone block through the world shader. Returns null if all three show up.
   selfTest() {
