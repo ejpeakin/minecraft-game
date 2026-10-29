@@ -121,6 +121,10 @@ src/
   input.js, audio.js      Keyboard/mouse with pointer lock; procedural sound
 ```
 
+After changing anything in `src/` or `style.css`, run `npm run stamp` before committing.
+It gives each file a versioned URL so browsers (and GitHub Pages' cache) always load a
+matching set of files, and updates the version shown on the title screen.
+
 `window.game` is available in the console, for example
 `game.player.inventory.add({ id: 'diamond', count: 64 })` or `game.world.time = 13000`
 (night). Blocks are appended to `DEFS` in `blocks.js` in order because their numeric ids

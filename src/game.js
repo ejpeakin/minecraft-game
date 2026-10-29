@@ -360,7 +360,7 @@ export class Game {
     const meta = this.saves.meta(this.worldId);
     const info = document.getElementById('pause-info');
     info.style.whiteSpace = 'pre-line';
-    info.textContent = `${meta ? `${meta.name} · seed ${meta.seed} · saved` : ''}\n${this.diagnostics()}`;
+    info.textContent = `${meta ? `${meta.name} · seed ${meta.seed} · saved` : ''}\nVersion ${window.BLOCKCRAFT_VERSION ?? 'dev'}\n${this.diagnostics()}`;
   }
 
   // One line of graphics facts for the pause menu (and bug reports).

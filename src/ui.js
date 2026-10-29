@@ -56,6 +56,7 @@ export class UI {
     this.bindMenus();
     this.bindInventoryEvents();
     this.bindMap();
+    document.getElementById('version').textContent = `Version ${window.BLOCKCRAFT_VERSION ?? 'dev'}`;
     document.documentElement.style.setProperty('--dirt', `url(${stoneDataUrl(this.bank, 'dirt', 4)})`);
     $('logo').style.setProperty('--stone', `url(${stoneDataUrl(this.bank, 'cobblestone', 2)})`);
   }

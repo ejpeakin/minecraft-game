@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "stamp": "node scripts/stamp.js"
   },
   "engines": {
     "node": ">=18"
