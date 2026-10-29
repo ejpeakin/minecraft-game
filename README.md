@@ -145,8 +145,17 @@ host needs to set it up, once:
 
 If **Anyone** isn't in the list (some school Google accounts only allow people in
 your school), pick **Anyone within** your school instead. Then everyone has to be
-signed in to a school account in the browser. If it still won't connect, make the
-script with a personal Google account at home; the link works the same at school.
+signed in to their school Google account in the browser. The game notices this kind
+of link and connects through the sign-in automatically.
+
+This game already has a school script built in (`DEFAULT_SERVER` in `src/net.js`),
+so on the GitHub Pages site you can leave **Server address** empty: sign in to your
+school Google account, open Multiplayer, and host or join.
+
+**Changing the script later:** don't make a new deployment, because that gives a new
+link. Instead, paste the new code, click **Deploy → Manage deployments**, click the
+pencil, set **Version** to **New version**, and click **Deploy**. The link stays the
+same.
 
 Through Apps Script, other players' movement updates about 2 or 3 times a second
 instead of 10, so they move a little jerkily. Block edits, chat and hits arrive within

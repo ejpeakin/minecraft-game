@@ -6,6 +6,7 @@ import { clickSlot, addToSlots, canMerge, cloneStack } from './inventory.js';
 import { hudIcon, stoneDataUrl } from './textures.js';
 import { BIOME_NAME, CHUNK, HEIGHT } from './worldgen.js';
 import { chunkKey } from './world.js';
+import { DEFAULT_SERVER } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, parent) => {
@@ -343,7 +344,10 @@ export class UI {
     $('mp-name').value = g.settings.playerName;
     $('mp-server').value = g.settings.serverUrl;
     this.mpHint = () => {
-      $('mp-server-hint').textContent = g.net.serverUrl() && !g.settings.serverUrl
+      const builtIn = !g.settings.serverUrl && g.net.serverUrl();
+      $('mp-server-hint').textContent = builtIn === DEFAULT_SERVER
+        ? 'Using the game\u2019s school server: be signed in to your school Google account. Friends open this same page to join.'
+        : builtIn
         ? 'Using this page’s server. Friends open the same link to join.'
         : 'Paste your game\u2019s server address: the Google Apps Script link (works at school) or a Render link. See the README for setup.';
     };
