@@ -498,6 +498,46 @@ const GEN = {
   barrel_bottom(t, r) { GEN.barrel_top(t, r); },
 };
 
+// Wooden door halves: framed vertical boards; the top half of lighter woods has two
+// little windows (cut out, so you can see through them).
+const WOOD_COLOR = { oak: OAK, birch: BIRCH, spruce: SPRUCE, poplar: POPLAR };
+const DOOR_WINDOWS = { oak: true, birch: true, spruce: false, poplar: true };
+function doorHalf(t, r, wood, upper) {
+  const base = WOOD_COLOR[wood];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    let c = mul(base, 0.96 + r() * 0.1 + Math.sin((x >> 2) * 2.1 + y * 0.15) * 0.03);
+    if (x % 4 === 3) c = mul(base, 0.8);
+    const frame = x === 0 || x === S - 1 || (upper ? y === 0 : y === S - 1);
+    const rail = upper ? y === 9 : y === 6 || y === 7;
+    if (frame) c = mul(base, 0.66);
+    else if (rail) c = mul(base, 0.72);
+    t.set(x, y, c);
+  }
+  if (upper && DOOR_WINDOWS[wood]) {
+    for (let y = 2; y < 8; y++) for (let x = 2; x < 14; x++) {
+      if (x === 7 || x === 8 || y === 4) t.set(x, y, mul(base, 0.7));
+      else t.clear(x, y);
+    }
+  }
+  if (!upper) {
+    // Handle.
+    t.set(12, 1, [70, 70, 76]); t.set(12, 2, [110, 110, 118]); t.set(13, 2, [50, 50, 56]);
+  }
+}
+
+function trapdoor(t, r, wood) {
+  const base = WOOD_COLOR[wood];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const edge = x < 2 || y < 2 || x > 13 || y > 13 || x === 7 || x === 8 || y === 7 || y === 8;
+    if (!edge && DOOR_WINDOWS[wood]) { t.clear(x, y); continue; }
+    let c = mul(base, 0.95 + r() * 0.1);
+    if (edge && (x === 0 || y === 0 || x === 15 || y === 15)) c = mul(base, 0.66);
+    else if (!edge && x % 3 === 0) c = mul(base, 0.8);
+    t.set(x, y, c);
+  }
+  t.set(3, 3, [70, 70, 76]); t.set(12, 3, [70, 70, 76]); t.set(3, 12, [70, 70, 76]); t.set(12, 12, [70, 70, 76]);
+}
+
 function sapling(t, r, stem, leaf) {
   for (let y = 9; y < 16; y++) t.set(8, y, stem);
   for (let i = 0; i < 26; i++) {
@@ -506,6 +546,94 @@ function sapling(t, r, stem, leaf) {
     t.set(Math.round(8 + Math.cos(a) * d), Math.round(6 + Math.sin(a) * d * 0.9), mul(leaf, 0.75 + r() * 0.45));
   }
 }
+
+for (const wood of Object.keys(WOOD_COLOR)) {
+  GEN[`${wood}_door_bottom`] = (t, r) => doorHalf(t, r, wood, false);
+  GEN[`${wood}_door_top`] = (t, r) => doorHalf(t, r, wood, true);
+  GEN[`${wood}_trapdoor`] = (t, r) => trapdoor(t, r, wood);
+}
+// Farmland: tilled furrows, darker when wet.
+const farmland = (wet) => (t, r) => {
+  const base = wet ? [82, 54, 34] : [124, 86, 56];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const furrow = y % 4 === 3 || (y % 4 === 0 && (x + y) % 5 === 0);
+    t.set(x, y, mul(base, (furrow ? 0.72 : 1) * (0.9 + r() * 0.2)));
+  }
+};
+GEN.farmland = farmland(false);
+GEN.farmland_wet = farmland(true);
+// Wheat: stalks that grow taller and turn from green to gold, with ears when ripe.
+for (let stage = 0; stage < 8; stage++) {
+  GEN[`wheat_stage_${stage}`] = (t, r) => {
+    const f = stage / 7;
+    const height = 2 + Math.round(stage * 1.75);
+    const green = [70, 150, 40], gold = [214, 180, 70];
+    for (const x of [1, 3, 5, 7, 9, 11, 13, 15]) {
+      const h = Math.max(1, height - Math.floor(r() * 3));
+      const lean = r() < 0.5 ? 0 : x < 8 ? -1 : 1;
+      for (let k = 0; k < h; k++) {
+        const px = x + (k > h * 0.6 ? lean : 0);
+        t.set(px, 15 - k, mul(mix(green, gold, Math.min(1, f * 1.2 + (k / h) * 0.2)), 0.8 + r() * 0.3));
+      }
+      if (stage >= 5) {
+        for (let k = 0; k < 3; k++) t.set(x + lean, 15 - h - k + 1, mul(stage === 7 ? [190, 150, 50] : [160, 160, 60], 0.85 + r() * 0.25));
+      }
+    }
+  };
+}
+GEN.hay_bale_side = (t, r) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    let c = mul((x + y * 3) % 5 === 0 ? [180, 140, 40] : [214, 176, 60], 0.88 + r() * 0.2);
+    if (y === 3 || y === 12) c = [120, 76, 30];
+    t.set(x, y, c);
+  }
+};
+GEN.hay_bale_top = (t, r) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const ring = Math.floor(Math.hypot(x - 7.5, y - 7.5)) % 3 === 0;
+    t.set(x, y, mul(ring ? [176, 136, 44] : [212, 174, 62], 0.88 + r() * 0.2));
+  }
+};
+// The red bed: top textures have the pillow at the top edge (the head end); the
+// mesher turns them to match the bed's direction. Sides fill the lower 9 pixels.
+const BED_RED = [176, 38, 38];
+GEN.red_bed_head_top = (t, r) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const pillow = y >= 2 && y < 7 && x >= 2 && x < 14;
+    const edge = x === 0 || x === 15;
+    t.set(x, y, pillow ? mul([238, 238, 232], 0.94 + r() * 0.08) : edge ? mul(BED_RED, 0.75) : y < 9 ? mul([226, 222, 214], 0.92 + r() * 0.08) : mul(BED_RED, 0.9 + r() * 0.15));
+  }
+};
+GEN.red_bed_foot_top = (t, r) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const edge = x === 0 || x === 15 || y === 15;
+    t.set(x, y, edge ? mul(BED_RED, 0.75) : mul(BED_RED, (y % 5 === 2 ? 0.85 : 1) * (0.9 + r() * 0.15)));
+  }
+};
+const bedSide = (head) => (t, r) => {
+  for (let y = 7; y < S; y++) for (let x = 0; x < S; x++) {
+    let c;
+    if (y < 10) c = head && x < 6 ? [232, 230, 224] : BED_RED;
+    else if (y < 13) c = mul(BED_RED, 0.78);
+    else c = (x < 3 || x > 12) ? mul(OAK, 0.8) : null;
+    if (c) t.set(x, y, mul(c, 0.92 + r() * 0.12));
+  }
+};
+GEN.red_bed_head_side = bedSide(true);
+GEN.red_bed_foot_side = bedSide(false);
+
+GEN.ladder = (t, r) => {
+  for (let y = 0; y < S; y++) {
+    for (const x of [2, 3, 12, 13]) t.set(x, y, mul(x === 2 || x === 12 ? [128, 98, 56] : [100, 76, 42], 0.92 + r() * 0.14));
+    if (y % 4 === 1 || y % 4 === 2) for (let x = 4; x < 12; x++) t.set(x, y, mul(y % 4 === 1 ? [150, 118, 70] : [112, 86, 48], 0.92 + r() * 0.14));
+  }
+};
+GEN.iron_bars = (t) => {
+  for (let y = 0; y < S; y++) {
+    for (const x of [1, 5, 9, 13]) { t.set(x, y, [158, 158, 164]); t.set(x + 1, y, [96, 96, 104]); }
+  }
+  for (const y of [0, 15]) for (let x = 0; x < S; x++) t.set(x, y, [140, 140, 148]);
+};
 
 for (const [color] of COLORS) {
   GEN[`${color}_wool`] = (t, r) => {
@@ -588,6 +716,10 @@ function tool(t, type, mat) {
   } else if (type === 'axe') {
     fillPoly(t, [[7, 2], [10, 0.5], [13.5, 3], [12, 7], [9, 6]], (x, y) => (x + y < 11 ? light : mat));
     line(t, 9, 6, 12, 7, dark);
+  } else if (type === 'hoe') {
+    line(t, 6, 3, 11, 3, light);
+    line(t, 6, 4, 9, 4, mat);
+    t.set(11, 4, dark); t.set(10, 4, dark);
   } else if (type === 'shovel') {
     fillPoly(t, [[11.5, 0.5], [14.5, 3.5], [12, 7.5], [8, 7], [8.5, 3.5]], (x, y) => (x - y > 6 ? light : mat));
     line(t, 8, 7, 12, 7, dark);
@@ -632,8 +764,39 @@ const ITEM_GEN = {
     outline(t);
   },
   map(t) { mapIcon(t, false); },
+  wheat_seeds(t, r) {
+    for (const [x, y] of [[5, 6], [8, 4], [10, 7], [6, 10], [9, 10], [12, 11], [4, 12]]) {
+      t.set(x, y, mul([110, 170, 60], 0.8 + r() * 0.4)); t.set(x + 1, y + 1, mul([70, 120, 40], 0.9 + r() * 0.2));
+    }
+  },
+  wheat(t, r) {
+    for (let i = 0; i < 4; i++) line(t, 3 + i, 14, 9 + i, 2 + i, (x, y) => mul(y < 7 ? [200, 160, 60] : [170, 140, 60], 0.85 + r() * 0.3));
+    line(t, 5, 10, 10, 10, [130, 90, 40]);
+    outline(t, [90, 66, 26]);
+  },
+  bread(t, r) {
+    fillPoly(t, [[2, 9], [4, 6], [12, 5], [14, 8], [12, 11], [4, 12]], (x, y) => mul(y < 8 ? [200, 140, 70] : [170, 110, 50], 0.9 + r() * 0.15));
+    for (const x of [6, 9, 12]) line(t, x - 1, 6, x, 9, [130, 80, 36]);
+    outline(t, [90, 56, 24]);
+  },
+  bucket(t) { bucketIcon(t, null); },
+  water_bucket(t) { bucketIcon(t, [52, 92, 224]); },
+  lava_bucket(t) { bucketIcon(t, [230, 110, 30]); },
+  red_bed(t) {
+    fillPoly(t, [[1, 7], [15, 7], [15, 11], [1, 11]], (x, y) => (x < 5 && y < 9 ? [236, 236, 230] : y < 9 ? [196, 44, 44] : [150, 30, 30]));
+    for (const x of [1, 2, 13, 14]) for (let y = 11; y < 14; y++) t.set(x, y, mul(OAK, 0.8));
+    outline(t, [40, 20, 16]);
+  },
   explorer_map(t) { mapIcon(t, true); },
 };
+
+function bucketIcon(t, fill) {
+  fillPoly(t, [[3, 5], [13, 5], [11.5, 14], [4.5, 14]], (x, y) => (x < 7 ? [216, 216, 220] : x > 10 ? [150, 150, 158] : [190, 190, 196]));
+  for (let x = 4; x < 13; x++) t.set(x, 5, fill ?? [60, 60, 66]);
+  if (fill) for (let x = 5; x < 12; x++) t.set(x, 6, mul(fill, 0.8));
+  line(t, 3, 4, 6, 1, [130, 130, 136]); line(t, 6, 1, 10, 1, [130, 130, 136]); line(t, 10, 1, 13, 4, [130, 130, 136]);
+  outline(t, [40, 40, 46]);
+}
 
 function ingot(t, c) {
   fillPoly(t, [[4, 6], [12, 6], [14, 11], [2, 11]], (x, y) => (y < 8 ? mul(c, 1.15) : y > 9 ? mul(c, 0.75) : c));
@@ -659,7 +822,19 @@ function mapIcon(t, explorer) {
 }
 
 for (const [tier, mat] of Object.entries(TIER_COLOR)) {
-  for (const type of ['pickaxe', 'axe', 'shovel', 'sword']) ITEM_GEN[`${tier}_${type}`] = (t) => tool(t, type, mat);
+  for (const type of ['pickaxe', 'axe', 'shovel', 'sword', 'hoe']) ITEM_GEN[`${tier}_${type}`] = (t) => tool(t, type, mat);
+}
+// A door item is the whole door, squeezed into the middle of the icon.
+for (const wood of Object.keys(WOOD_COLOR)) {
+  ITEM_GEN[`${wood}_door`] = (t) => {
+    const top = paint(GEN[`${wood}_door_top`], `${wood}_door_top`);
+    const bottom = paint(GEN[`${wood}_door_bottom`], `${wood}_door_bottom`);
+    for (let y = 0; y < S; y++) for (let x = 0; x < 8; x++) {
+      const src = y < 8 ? top : bottom;
+      const [cr, cg, cb, ca] = src.get(x * 2, (y % 8) * 2);
+      if (ca) t.set(x + 4, y, [cr, cg, cb]);
+    }
+  };
 }
 for (const name of Object.keys(ITEMS)) {
   const dye = ITEMS[name].dye;
@@ -823,7 +998,7 @@ export class TextureBank {
       ctx.drawImage(flat, 0, 0, 64, 64);
     } else if (block) {
       const shape = SHAPES[block.id];
-      if (shape === SHAPE.CROSS || shape === SHAPE.TORCH) {
+      if (shape === SHAPE.CROSS || shape === SHAPE.TORCH || shape === SHAPE.LADDER || shape === SHAPE.PANE) {
         ctx.drawImage(this.tileCanvases.get(block.tex.side), 0, 0, 64, 64);
       } else {
         this.drawIso(ctx, block);

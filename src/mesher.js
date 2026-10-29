@@ -329,7 +329,7 @@ function emitBoxes(id, i, x, y, z, boxes) {
         const py = c[1] ? y1 : y0;
         const pz = c[2] ? z1 : z0;
         let [u, vv] = faceUV(f, px, py, pz);
-        if (rot) [u, vv] = [vv, 1 - u];
+        for (let k = 0; k < rot; k++) [u, vv] = [vv, 1 - u];
         v.push(buf.vert(x + px, y + py, z + pz, u, vv, layer, ls, lb, shade));
       }
       buf.quad(v[0], v[1], v[2], v[3]);

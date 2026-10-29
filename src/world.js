@@ -229,6 +229,11 @@ export class World {
     const nb = BLOCKS[id];
     if (nb.sapling) this.growth.set(key, { at: this.clock + 60 + Math.random() * 120, kind: 'sapling' });
     if (nb.shelf === 'small') this.growth.set(key, { at: this.clock + 120 + Math.random() * 240, kind: 'shelf' });
+    if (nb.crop >= 0 && nb.crop < 7) {
+      // Each stage takes 20-40 s on wet farmland, twice that on dry.
+      const wet = BLOCKS[this.getBlock(x, y - 1, z)].wet;
+      this.growth.set(key, { at: this.clock + (20 + Math.random() * 20) * (wet ? 1 : 2), kind: 'crop' });
+    }
     if (!silent) this.neighborsChanged(x, y, z, old, id);
     return true;
   }
@@ -248,6 +253,7 @@ export class World {
     this.checkFall(x, y + 1, z);
     // Things that need support.
     this.checkSupport(x, y + 1, z);
+    this.checkSupport(x, y - 1, z);
     for (const [dx, , dz] of N4) this.checkSupport(x + dx, y, z + dz);
   }
 
@@ -277,10 +283,51 @@ export class World {
       ok = !!behind.name.endsWith('_log');
     } else if (id === B.cactus) {
       ok = below === B.sand || below === B.cactus;
+    } else if (b.door) {
+      // The two halves of a door go together; the bottom half stands on solid ground.
+      const other = BLOCKS[this.getBlock(x, y + (b.door === 'lower' ? 1 : -1), z)];
+      ok = other.baseId === b.partnerBase && (b.door === 'upper' || !!SOLID[below]);
+    } else if (b.carpet) {
+      ok = below !== 0 && !FLUID[below];
+    } else if (b.crop >= 0) {
+      ok = BLOCKS[below].farmland;
+    } else if (b.farmland) {
+      // A solid block on farmland packs it back down to dirt.
+      if (SOLID[this.getBlock(x, y + 1, z)]) this.setBlock(x, y, z, B.dirt);
+      return;
+    } else if (b.bed) {
+      const [fx, fz] = FACING_DIR[b.facing];
+      const s = b.bed === 'foot' ? 1 : -1;
+      ok = BLOCKS[this.getBlock(x + fx * s, y, z + fz * s)].baseId === b.partnerBase;
+    } else if (b.climbable) {
+      const [fx, fz] = FACING_DIR[b.facing];
+      ok = !!OPAQUE[this.getBlock(x + fx, y, z + fz)];
     } else {
       return;
     }
     if (!ok) this.breakBlock(x, y, z, true);
+  }
+
+  // --- Farmland ---------------------------------------------------------------------------
+
+  // Water within 4 blocks sideways, at the same height or one above.
+  hasWaterNear(x, y, z) {
+    for (let dy = 0; dy <= 1; dy++) for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
+      if (FLUID[this.getBlock(x + dx, y + dy, z + dz)] === 1) return true;
+    }
+    return false;
+  }
+
+  // Wet or dry a farmland block to match the water around it.
+  hydrate(x, y, z) {
+    const b = BLOCKS[this.getBlock(x, y, z)];
+    if (!b.farmland) return;
+    const want = this.hasWaterNear(x, y, z) ? B.wet_farmland : B.farmland;
+    if (want !== b.id) this.setBlock(x, y, z, want);
+  }
+
+  hydrateAround(x, y, z) {
+    for (let dy = -1; dy <= 0; dy++) for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) this.hydrate(x + dx, y + dy, z + dz);
   }
 
   // Remove a block and drop what it would drop when broken by hand.
@@ -385,6 +432,10 @@ export class World {
       } else if (g.kind === 'shelf' && b.shelf === 'small') {
         this.growth.delete(key);
         this.setBlock(x, y, z, B.large_shelf_mushroom + b.facing);
+      } else if (g.kind === 'crop' && b.crop >= 0 && b.crop < 7) {
+        this.growth.delete(key);
+        this.hydrate(x, y - 1, z);
+        this.setBlock(x, y, z, B[`wheat_${b.crop + 1}`]);
       } else {
         this.growth.delete(key);
       }
@@ -517,6 +568,7 @@ export function tileTypeOf(id) {
 export function canPlantOn(id, below) {
   const b = BLOCKS[id];
   if (id === B.dead_bush) return below === B.sand;
+  if (b.crop >= 0) return BLOCKS[below].farmland;
   if (b.plant) return below === B.grass || below === B.dirt || below === B.snowy_grass;
   return true;
 }

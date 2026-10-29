@@ -1,6 +1,6 @@
 // Items, tools, food, crafting recipes and smelting. Block items share the block's
 // name; everything else is a plain item with an icon painted in textures.js.
-import { BLOCKS, B, COLORS } from './blocks.js';
+import { BLOCKS, B, COLORS, WOODS } from './blocks.js';
 
 export const ITEMS = {};
 
@@ -32,6 +32,12 @@ item('cooked_mutton', { label: 'Cooked Mutton', food: { hunger: 6, saturation: 9
 item('rotten_flesh', { label: 'Rotten Flesh', food: { hunger: 4, saturation: 0.8 } });
 item('mushroom_stew', { label: 'Mushroom Stew', maxStack: 1, food: { hunger: 6, saturation: 7.2, leaves: 'bowl' } });
 item('flint_and_steel', { label: 'Flint and Steel', maxStack: 1, durability: 64, igniter: true });
+item('wheat_seeds', { label: 'Wheat Seeds', plants: 'wheat_0' });
+item('wheat', { label: 'Wheat' });
+item('bread', { label: 'Bread', food: { hunger: 5, saturation: 6 } });
+item('bucket', { label: 'Bucket', maxStack: 16, bucket: 'empty' });
+item('water_bucket', { label: 'Water Bucket', maxStack: 1, bucket: 'water' });
+item('lava_bucket', { label: 'Lava Bucket', maxStack: 1, bucket: 'lava' });
 item('map', { label: 'Map', maxStack: 1, map: true });
 item('explorer_map', { label: 'Explorer Map', maxStack: 1, map: true });
 for (const c of ['red', 'yellow', 'orange', 'green', 'lime', 'brown', 'black']) {
@@ -45,8 +51,8 @@ export const TIERS = {
   golden: { label: 'Golden', level: 0, speed: 12, durability: 32, damage: 0, material: 'gold_ingot' },
   diamond: { label: 'Diamond', level: 3, speed: 8, durability: 1561, damage: 3, material: 'diamond' },
 };
-const TOOL_BASE = { pickaxe: 2, axe: 3, shovel: 1.5, sword: 4 };
-const TOOL_LABEL = { pickaxe: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword' };
+const TOOL_BASE = { pickaxe: 2, axe: 3, shovel: 1.5, sword: 4, hoe: 1 };
+const TOOL_LABEL = { pickaxe: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword', hoe: 'Hoe' };
 
 for (const [tier, t] of Object.entries(TIERS)) {
   for (const type of Object.keys(TOOL_BASE)) {
@@ -77,7 +83,7 @@ export function fuelValue(name) {
 
 const PLANKS = ['oak_planks', 'birch_planks', 'spruce_planks', 'poplar_planks'];
 const LOGS = ['oak_log', 'birch_log', 'spruce_log', 'poplar_log'];
-const SLABS = ['oak_slab', 'poplar_slab'];
+const SLABS = ['oak_slab', 'birch_slab', 'spruce_slab', 'poplar_slab'];
 const COALS = ['coal', 'charcoal'];
 
 // Shaped recipes: rows of characters, '.' is empty, keys map to an item name or a list
@@ -123,15 +129,27 @@ function slabsAndStairs(material, base) {
   shaped(['MMM'], { M: material }, `${base}_slab`, 6);
   shaped(['M..', 'MM.', 'MMM'], { M: material }, `${base}_stairs`, 4);
 }
-slabsAndStairs('oak_planks', 'oak');
-slabsAndStairs('poplar_planks', 'poplar');
+for (const [wood] of WOODS) {
+  const P = `${wood}_planks`;
+  slabsAndStairs(P, wood);
+  shaped(['PSP', 'PSP'], { P, S: 'stick' }, `${wood}_fence`, 3);
+  shaped(['SPS', 'SPS'], { P, S: 'stick' }, `${wood}_fence_gate`);
+  shaped(['PP', 'PP', 'PP'], { P }, `${wood}_door`, 3);
+  shaped(['PPP', 'PPP'], { P }, `${wood}_trapdoor`, 2);
+}
 slabsAndStairs('cobblestone', 'cobblestone');
-shaped(['PSP', 'PSP'], { P: 'oak_planks', S: 'stick' }, 'oak_fence', 3);
-shaped(['PSP', 'PSP'], { P: 'poplar_planks', S: 'stick' }, 'poplar_fence', 3);
+slabsAndStairs('stone', 'stone');
+slabsAndStairs('stone_bricks', 'stone_brick');
+slabsAndStairs('bricks', 'brick');
+slabsAndStairs('sandstone', 'sandstone');
+shaped(['S.S', 'SSS', 'S.S'], { S: 'stick' }, 'ladder', 3);
+shaped(['GGG', 'GGG'], { G: 'glass' }, 'glass_pane', 16);
+shaped(['III', 'III'], { I: 'iron_ingot' }, 'iron_bars', 16);
 for (const [color] of COLORS) {
   slabsAndStairs(`${color}_wool`, `${color}_wool`);
   slabsAndStairs(`${color}_concrete`, `${color}_concrete`);
-  shaped(['WW'], { W: `${color}_wool` }, `${color}_cushion`, 2);
+  shaped(['W', 'W'], { W: `${color}_wool` }, `${color}_cushion`, 2);
+  shaped(['WW'], { W: `${color}_wool` }, `${color}_carpet`, 3);
   if (ITEMS[`${color}_dye`]) {
     shaped(['WWW', 'WDW', 'WWW'], { W: 'white_wool', D: `${color}_dye` }, `${color}_wool`, 8);
     shaped(['WWW', 'WDW', 'WWW'], { W: 'white_concrete', D: `${color}_dye` }, `${color}_concrete`, 8);
@@ -143,7 +161,13 @@ for (const [tier, t] of Object.entries(TIERS)) {
   shaped(['MM', 'MS', '.S'], { M, S: 'stick' }, `${tier}_axe`);
   shaped(['M', 'S', 'S'], { M, S: 'stick' }, `${tier}_shovel`);
   shaped(['M', 'M', 'S'], { M, S: 'stick' }, `${tier}_sword`);
+  shaped(['MM', '.S', '.S'], { M, S: 'stick' }, `${tier}_hoe`);
 }
+shaped(['WWW'], { W: 'wheat' }, 'bread');
+shaped(['WWW', 'WWW', 'WWW'], { W: 'wheat' }, 'hay_bale');
+shaped(['H'], { H: 'hay_bale' }, 'wheat', 9);
+shaped(['I.I', '.I.'], { I: 'iron_ingot' }, 'bucket');
+shaped(['WWW', 'PPP'], { W: 'red_wool', P: PLANKS }, 'red_bed');
 
 const accepts = (key, name) => (Array.isArray(key) ? key.includes(name) : key === name);
 
@@ -265,7 +289,17 @@ export function blockDrops(block, tool, rng) {
   }
   if (block.id === B.gravel) return [{ id: rng() < 0.12 ? 'flint' : 'gravel', count: 1 }];
   if (block.id === B.dead_bush) return rng() < 0.6 ? [{ id: 'stick', count: 1 + Math.floor(rng() * 2) }] : [];
-  if (block.id === B.tall_grass) return rng() < 0.3 ? [{ id: 'straw', count: 1 }] : [];
+  if (block.id === B.tall_grass) {
+    const out = [];
+    if (rng() < 0.3) out.push({ id: 'straw', count: 1 });
+    if (rng() < 0.125) out.push({ id: 'wheat_seeds', count: 1 });
+    return out;
+  }
+  if (block.crop >= 0) {
+    // Ripe wheat gives the grain and some seeds back; unripe just the seed.
+    if (block.crop < 7) return [{ id: 'wheat_seeds', count: 1 }];
+    return [{ id: 'wheat', count: 1 }, { id: 'wheat_seeds', count: 1 + Math.floor(rng() * 3) }];
+  }
   if (!block.drop) return [];
   return [{ id: block.drop, count: block.dropCount }];
 }
