@@ -13,6 +13,7 @@ import { ViewModel } from './viewmodel.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { UI } from './ui.js';
+import { Net } from './net.js';
 import { BLOCKS, SOLID, B } from './blocks.js';
 import { SMELTING, fuelValue, maxStack } from './items.js';
 import { seedFromString } from './noise.js';
@@ -25,6 +26,7 @@ const WORLD_KEY = (id) => `blockcraft.world.${id}`;
 const LOW_MEMORY = (navigator.deviceMemory ?? 8) <= 4;
 
 const DEFAULT_SETTINGS = {
+  playerName: `Player${Math.floor(100 + Math.random() * 900)}`, serverUrl: '',
   renderDistance: LOW_MEMORY ? 4 : 6, safeGraphics: false, fancyGraphics: true, fov: 70, sensitivity: 1, brightness: 0.5, volume: 0.7, music: 0.4,
   invertY: false, clouds: true, bobbing: true, peaceful: false, keepInventory: false,
 };
@@ -133,6 +135,7 @@ export class Game {
     this.entities = new EntityManager(this);
     this.viewModel = new ViewModel(this);
     this.ui = new UI(this);
+    this.net = new Net(this);
     this.world = null;
     this.state = 'menu';
     this.fps = 60;
@@ -210,11 +213,17 @@ export class Game {
   async openWorld(id) {
     const meta = this.saves.meta(id);
     if (!meta) return;
+    await this.startWorld({ id, name: meta.name, seed: meta.seed, mode: meta.mode, save: this.saves.load(id) });
+  }
+
+  // Load and enter a world. id is null for a friend's multiplayer world, which isn't
+  // saved here (the host's computer keeps it); edits are the room's changes so far.
+  async startWorld({ id, name, seed, mode, save = null, edits = [], players = [] }) {
+    const meta = { name, seed, mode };
     this.audio.resume();
-    const save = this.saves.load(id);
     this.cancelSleep();
     this.worldId = id;
-    this.worldName = meta.name;
+    this.worldName = name;
     this.state = 'loading';
     this.ui.show('loading');
     this.ui.setLoading(0, 'Building terrain');
@@ -222,8 +231,10 @@ export class Game {
 
     this.world = new World(meta.seed, save?.world ?? null);
     this.world.markers = save?.world?.markers ?? [];
+    this.world.addEdits(edits);
     this.world.onFall = (x, y, z, blockId) => this.entities.add(new FallingBlock(this, x, y, z, blockId));
     this.world.onDrop = (x, y, z, blockId, stack) => {
+      if (this.world.applyingRemote) return; // the player who broke it gets the drops
       if (stack) this.entities.dropItem(x + 0.5, y + 0.5, z + 0.5, stack);
       else this.entities.dropBlockItems(x, y, z, blockId, { type: BLOCKS[blockId].tool, level: 3, speed: 1 });
     };
@@ -265,7 +276,8 @@ export class Game {
       this.worldSpawn = this.groundNear(Math.floor(this.player.x), Math.floor(this.player.z));
       Object.assign(this.player, this.worldSpawn);
     }
-    this.saves.touch(id);
+    if (id) this.saves.touch(id);
+    this.net.addPlayers(players);
     const failure = this.selfTest();
     this.selfTestResult = failure ? 'failed' : 'passed';
     this.state = 'playing';
@@ -326,8 +338,47 @@ export class Game {
     document.getElementById('sleep-fade').style.opacity = 0;
   }
 
+  // --- Multiplayer ------------------------------------------------------------------------
+
+  // Open one of this browser's worlds and share it: returns the room code.
+  async hostWorld(id) {
+    const meta = this.saves.meta(id);
+    if (!meta) return null;
+    await this.net.connect();
+    await this.openWorld(id);
+    const data = this.world.serialize();
+    const code = await this.net.host({ seed: meta.seed, mode: meta.mode, name: meta.name, time: this.world.time, spawn: this.worldSpawn, mods: data.mods });
+    this.ui.chatLine(`Hosting "${meta.name}". Friends can join with code ${code}.`, 'system');
+    this.ui.toast(`Your game code is ${code}. Press T to chat.`, 8);
+    return code;
+  }
+
+  async joinGame(code) {
+    await this.net.connect();
+    const welcome = await this.net.join(code);
+    const w = welcome.world;
+    await this.startWorld({
+      id: null, name: `${w.name} (${welcome.code})`, seed: w.seed, mode: w.mode,
+      save: { world: { mods: w.mods, time: w.time }, spawn: w.spawn ?? null },
+      edits: welcome.edits, players: welcome.players,
+    });
+    this.ui.chatLine(`Joined ${w.name}. Press T to chat.`, 'system');
+  }
+
+  onDisconnected() {
+    if (!this.world) return;
+    if (this.worldId) {
+      this.ui.chatLine('Lost the connection to the server. You’re playing on your own now; your world is still saved.', 'system');
+      return;
+    }
+    this.quitToTitle();
+    this.ui.show('multiplayer');
+    this.ui.setMultiplayerStatus('Lost the connection to the game. Try joining again.');
+  }
+
   quitToTitle() {
     this.cancelSleep();
+    this.net.leave();
     this.save();
     this.ui.close();
     this.entities.clear();
@@ -393,6 +444,7 @@ export class Game {
 
   onPlayerDeath(cause) {
     const msgs = {
+      player: `were slain by ${this.player.lastAttacker ?? 'another player'}`,
       fall: 'fell from a high place', lava: 'tried to swim in lava', drown: 'drowned', zombie: 'was slain by a Zombie',
       explosion: 'blew up', cactus: 'was pricked to death', starve: 'starved to death', void: 'fell out of the world',
     };
@@ -422,6 +474,10 @@ export class Game {
       this.ui.toast('You may not rest now; there are monsters nearby.');
       return;
     }
+    if (this.net.active && !this.net.isHost) {
+      this.ui.toast('Respawn point set. In multiplayer only the host can sleep through the night.');
+      return;
+    }
     const fade = document.getElementById('sleep-fade');
     fade.style.opacity = 1;
     this.sleeping = true;
@@ -431,7 +487,8 @@ export class Game {
       if (this.world !== world) return;
       world.time = 0;
       world.day += 1;
-      world.setBlock(x, y, z, 0);
+      this.net.send({ t: 'time', time: 0 });
+      this.net.capture(() => world.setBlock(x, y, z, 0));
       this.particles.burst(x, y, z, [0.86, 0.74, 0.36], 20);
       fade.style.opacity = 0;
       this.sleeping = false;
@@ -464,6 +521,10 @@ export class Game {
       }
       if (code === 'KeyE') {
         this.ui.open('inventory');
+        return true;
+      }
+      if (code === 'KeyT' && this.net.active) {
+        this.ui.openChat();
         return true;
       }
       if (code === 'KeyM') {
@@ -670,6 +731,7 @@ export class Game {
       world.processGrowth();
       world.updateTiles(dt, { recipeFor: (id) => SMELTING[id] ?? null, fuelFor: fuelValue, maxStack });
       p.update(dt, this.input, active);
+      this.net.update(dt);
       this.entities.update(dt);
       this.spawnLeaves(dt);
       this.spawnSmoke(dt);
