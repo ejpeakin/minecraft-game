@@ -172,6 +172,7 @@ If it's still black, a screenshot of the pause menu says what's going wrong.
 
 ```
 index.html, style.css     Page shell, HUD and menus
+fonts/blockcraft.ttf      The blocky pixel font (built by scripts/build-font.py)
 server.js                 Serves the game and runs multiplayer rooms (WebSocket /ws)
 render.yaml               Render blueprint for hosting the server
 src/
@@ -191,15 +192,21 @@ src/
   viewmodel.js            First-person hand and held item
   inventory.js            Stacks and Minecraft click rules
   ui.js                   HUD, container screens, map, menus
+  logo.js                 The 3D stone title logo, drawn pixel by pixel
   net.js                  Multiplayer client: rooms, other players, shared edits, chat
   mqtt.js                 Multiplayer through public MQTT brokers (the GitHub Pages default)
   relay.js                Multiplayer through the Google Apps Script relay (relay/Code.gs)
   input.js, audio.js      Keyboard/mouse with pointer lock; procedural sound
 ```
 
-After changing anything in `src/` or `style.css`, run `npm run stamp` before committing.
+After changing anything in `src/`, `style.css` or `fonts/`, run `npm run stamp` before
+committing.
 It gives each file a versioned URL so browsers (and GitHub Pages' cache) always load a
 matching set of files, and updates the version shown on the title screen.
+
+The font is drawn as pixel grids in `scripts/build-font.py`. To change a letter, edit
+its grid, then run `pip install fonttools` once and `python3 scripts/build-font.py`
+(and `npm run stamp`).
 
 `window.game` is available in the console, for example
 `game.player.inventory.add({ id: 'diamond', count: 64 })` or `game.world.time = 13000`

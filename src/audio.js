@@ -122,7 +122,11 @@ export class Audio {
   }
 
   pop() { this.tone(500 + Math.random() * 500, 0.08, { type: 'sine', gain: 0.18, slide: 1.6 }); }
-  click() { this.tone(900, 0.04, { type: 'square', gain: 0.06 }); }
+  // Menu click: a short bright tick with a little body under it.
+  click() {
+    this.burst({ type: 'bandpass', freq: 2400, q: 1.6, dur: 0.035, gain: 0.32 }, 1, 1);
+    this.tone(1250, 0.035, { type: 'triangle', gain: 0.07, slide: 0.55 });
+  }
   hurt() { this.tone(220, 0.18, { type: 'sawtooth', gain: 0.22, slide: 0.6 }); }
   eat() { this.burst({ type: 'bandpass', freq: 900, q: 1.5, dur: 0.1, gain: 0.3 }, 1, 0.7 + Math.random() * 0.5); }
   burp() { this.tone(140, 0.3, { type: 'sawtooth', gain: 0.18, slide: 0.7 }); }

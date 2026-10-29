@@ -20,23 +20,28 @@ const TIME_INTERVAL = 5; // seconds between the host's clock broadcasts
 // Movement flags packed into one number.
 const F_SNEAK = 1, F_SWING = 2, F_FLY = 4;
 
+// The name above another player, in the game's pixel font at 4 screen pixels per font
+// pixel (the font is 8 pixels per em).
 function nameTag(text) {
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d');
-  ctx.font = '28px VT323, monospace';
-  const w = Math.ceil(ctx.measureText(text).width) + 16;
+  const font = '32px Blockcraft, monospace';
+  ctx.font = font;
+  const w = Math.ceil(ctx.measureText(text).width) + 8;
   c.width = w;
-  c.height = 36;
-  ctx.font = '28px VT323, monospace';
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-  ctx.fillRect(0, 0, w, 36);
+  c.height = 40;
+  ctx.font = font;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  ctx.fillRect(0, 0, w, 40);
   ctx.fillStyle = '#fff';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 8, 19);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(text, 4, 32);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.LinearFilter;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
-  sprite.scale.set((w / 36) * 0.32, 0.32, 1);
+  sprite.scale.set((w / 40) * 0.3, 0.3, 1);
   sprite.position.y = 2.15;
   return sprite;
 }

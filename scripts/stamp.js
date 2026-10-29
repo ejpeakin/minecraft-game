@@ -1,7 +1,7 @@
-// Cache busting for static hosts like GitHub Pages: gives every module and the
-// stylesheet a ?v=<content hash> URL through an import map in index.html, so a
-// browser can never mix a cached old file with new ones. Run after changing any
-// file in src/ or style.css:  npm run stamp
+// Cache busting for static hosts like GitHub Pages: gives every module, the
+// stylesheet and the font a ?v=<content hash> URL (modules through an import map in
+// index.html), so a browser can never mix a cached old file with new ones. Run after
+// changing any file in src/, style.css or fonts/:  npm run stamp
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -11,6 +11,12 @@ const walk = (dir) => readdirSync(dir).flatMap((name) => {
   const path = join(dir, name);
   return statSync(path).isDirectory() ? walk(path) : [path];
 });
+
+// The font's URL lives in style.css (and a preload in index.html), so stamp it first.
+const font = 'fonts/blockcraft.ttf';
+const fontUrl = `${font}?v=${hash(font)}`;
+const css = readFileSync('style.css', 'utf8').replace(/fonts\/blockcraft\.ttf(\?v=\w+)?/g, fontUrl);
+writeFileSync('style.css', css);
 
 const modules = walk('src').filter((f) => f.endsWith('.js')).sort();
 const imports = Object.fromEntries(modules.map((f) => [`./${f}`, `./${f}?v=${hash(f)}`]));
@@ -27,5 +33,6 @@ if (html.includes('<!-- stamp:start')) html = html.replace(/<!-- stamp:start[\s\
 else html = html.replace('<link rel="stylesheet" href="style.css', `${block}\n  <link rel="stylesheet" href="style.css`);
 html = html.replace(/href="style\.css(\?v=\w+)?"/, `href="style.css?v=${hash('style.css')}"`);
 html = html.replace(/src="src\/main\.js(\?v=\w+)?"/, `src="src/main.js?v=${hash('src/main.js')}"`);
+html = html.replace(/href="fonts\/blockcraft\.ttf(\?v=\w+)?"/, `href="${fontUrl}"`);
 writeFileSync('index.html', html);
 console.log(`Stamped version ${version} (${modules.length} modules)`);

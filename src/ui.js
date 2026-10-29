@@ -4,6 +4,7 @@ import { ITEMS, itemLabel, findRecipe, maxStack, fuelValue, SMELTING } from './i
 import { BLOCKS, FACE_TEX, FLUID, COLORS } from './blocks.js';
 import { clickSlot, addToSlots, canMerge, cloneStack } from './inventory.js';
 import { hudIcon, stoneDataUrl } from './textures.js';
+import { buildLogo } from './logo.js';
 import { BIOME_NAME, CHUNK, HEIGHT } from './worldgen.js';
 import { chunkKey } from './world.js';
 import { DEFAULT_SERVER } from './net.js';
@@ -44,6 +45,24 @@ const SPLASHES = [
   'Explorer maps inside!', 'Straw beds, one use only!', 'Now multiplayer!', 'Look up at the sunset!',
 ];
 
+// Minecraft's button face: mid gray with faint pixel noise (each texture pixel is
+// 2x2 screen pixels).
+function buttonTexture() {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 32;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(64, 32);
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 64 * 32; i++) {
+    const v = 111 + Math.round((rand() - 0.5) * 12);
+    img.data.set([v, v, v, 255], i * 4);
+  }
+  ctx.putImageData(img, 0, 0);
+  return c.toDataURL();
+}
+
 export class UI {
   constructor(game) {
     this.game = game;
@@ -66,9 +85,10 @@ export class UI {
     this.bindInventoryEvents();
     this.bindMap();
     document.getElementById('version').textContent = `Version ${window.BLOCKCRAFT_VERSION ?? 'dev'}`;
-    document.documentElement.style.setProperty('--dirt', `url(${stoneDataUrl(this.bank, 'dirt', 4)})`);
-    $('logo').style.setProperty('--stone', `url(${stoneDataUrl(this.bank, 'cobblestone', 2)})`);
-    document.documentElement.style.setProperty('--planks', `url(${stoneDataUrl(this.bank, 'spruce_planks', 2)})`);
+    const root = document.documentElement.style;
+    root.setProperty('--dirt', `url(${stoneDataUrl(this.bank, 'dirt', 4)})`);
+    root.setProperty('--planks', `url(${stoneDataUrl(this.bank, 'spruce_planks', 2)})`);
+    root.setProperty('--btn-tex', `url(${buttonTexture()})`);
     this.buildTitle();
   }
 
@@ -212,21 +232,28 @@ export class UI {
   }
 
   bindMenus() {
+    // Every button clicks, like Minecraft's. (A click on a toggle's label also reaches
+    // its hidden checkbox; that second click stays quiet.)
+    document.body.addEventListener('click', (e) => {
+      if (e.target.matches('input') || !e.target.closest('.mc-btn, .toggle, .mode-pick label')) return;
+      this.game.audio.resume();
+      this.game.audio.click();
+    });
     document.body.addEventListener('click', (e) => {
       const go = e.target.closest('[data-go]')?.dataset.go;
       if (!go) return;
-      this.game.audio.resume();
-      this.game.audio.click();
       if (go === 'back') this.show(this.returnTo ?? 'title');
       else {
         if (go === 'settings' || go === 'help') this.returnTo = this.menu;
         this.show(go);
       }
     });
-    $('settings-done').addEventListener('click', () => {
-      this.game.audio.click();
-      this.show(this.returnTo ?? 'title');
-    });
+    $('settings-done').addEventListener('click', () => this.show(this.returnTo ?? 'title'));
+    // Options with a note explain themselves while the pointer is on them.
+    for (const opt of document.querySelectorAll('#settings-screen [data-note]')) {
+      opt.addEventListener('pointerenter', () => { $('settings-note').textContent = opt.dataset.note; });
+      opt.addEventListener('pointerleave', () => { $('settings-note').textContent = ''; });
+    }
     $('new-world').addEventListener('submit', (e) => {
       e.preventDefault();
       const mode = new FormData(e.target).get('mode');
@@ -241,7 +268,7 @@ export class UI {
     const s = this.game.settings;
     const ranges = [
       ['s-rd', 'o-rd', 'renderDistance', (v) => `${v} chunks`],
-      ['s-fov', 'o-fov', 'fov', (v) => `${v}°`],
+      ['s-fov', 'o-fov', 'fov', (v) => (v === 70 ? 'Normal' : v >= 110 ? 'Quake Pro' : `${v}`)],
       ['s-sens', 'o-sens', 'sensitivity', (v) => `${Math.round(v * 100)}%`],
       ['s-bright', 'o-bright', 'brightness', (v) => (v <= 0.05 ? 'Moody' : v >= 0.95 ? 'Bright' : `${Math.round(v * 100)}%`)],
       ['s-vol', 'o-vol', 'volume', (v) => `${Math.round(v * 100)}%`],
@@ -286,7 +313,9 @@ export class UI {
       const li = el('li', '', list);
       const meta = el('div', 'meta', li);
       el('b', '', meta).textContent = w.name;
-      el('span', '', meta).textContent = `${w.mode === 'creative' ? 'Creative' : 'Survival'} · seed ${w.seed} · ${new Date(w.lastPlayed).toLocaleString()}`;
+      const played = new Date(w.lastPlayed).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      el('span', '', meta).textContent = `${w.mode === 'creative' ? 'Creative' : 'Survival'} Mode · ${played}`;
+      li.title = `Seed: ${w.seed}`;
       const play = el('button', 'mc-btn small', li);
       play.type = 'button';
       play.textContent = 'Play';
@@ -315,15 +344,7 @@ export class UI {
   // --- Title screen -------------------------------------------------------------------------
 
   buildTitle() {
-    const logo = $('logo');
-    const text = logo.textContent;
-    logo.textContent = '';
-    [...text].forEach((ch, i) => {
-      const span = el('span', 'ch', logo);
-      span.textContent = ch;
-      span.style.setProperty('--i', i);
-      span.setAttribute('aria-hidden', 'true');
-    });
+    buildLogo($('logo'), $('logo').textContent.trim(), this.bank.tileCanvases.get('stone'));
     $('splash').textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
     $('btn-continue').addEventListener('click', () => {
       const last = this.game.saves.list()[0];
@@ -334,7 +355,7 @@ export class UI {
   updateContinue() {
     const last = this.game.saves.list()[0];
     $('btn-continue').hidden = !last;
-    if (last) $('continue-name').textContent = `${last.name} \u00b7 ${last.mode === 'creative' ? 'Creative' : 'Survival'}`;
+    if (last) $('continue-name').textContent = last.name;
   }
 
   // --- Multiplayer ------------------------------------------------------------------------
