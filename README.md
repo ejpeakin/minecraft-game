@@ -71,7 +71,7 @@ can, and click outside the window to throw the held stack.
 ### Wilderness Bound
 
 - **Dappled Forest**: an autumn biome that generates between the cold biomes and the
-  temperate ones. Tall, slender **poplar trees** in red, orange and yellow drop leaves
+  temperate ones, covering about a quarter of the land. New worlds start in one. Tall, slender **poplar trees** in red, orange and yellow drop leaves
   that drift down around you, and fallen poplar logs lie on the ground.
 - **Poplar wood set**: logs (they can be placed sideways), planks, slabs, stairs, fences
   and saplings that grow into any of the three colors.

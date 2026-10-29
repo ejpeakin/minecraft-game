@@ -60,7 +60,7 @@ export class WorldGen {
     else if (height <= SEA && temp > -0.4) biome = BIOME.BEACH;
     else if (temp < -0.4) biome = BIOME.SNOWY;
     else if (temp < -0.2) biome = BIOME.TAIGA;
-    else if (temp < -0.02 && hum > -0.15) biome = BIOME.DAPPLED;
+    else if (temp < 0.12 && hum > -0.25) biome = BIOME.DAPPLED;
     else if (temp > 0.33 && hum < 0.05) biome = BIOME.DESERT;
     else if (hum > 0.12) biome = BIOME.FOREST;
     else biome = BIOME.PLAINS;
@@ -269,7 +269,7 @@ export class WorldGen {
       case BIOME.TAIGA: return r < 0.03 ? 'spruce' : null;
       case BIOME.SNOWY: return r < 0.004 ? 'spruce' : null;
       case BIOME.MOUNTAINS: return col.height < 92 && r < 0.005 ? 'spruce' : null;
-      case BIOME.DAPPLED: return r < 0.034 ? 'poplar' : r < 0.04 ? 'oak' : r < 0.0435 ? 'fallen_poplar' : null;
+      case BIOME.DAPPLED: return r < 0.048 ? 'poplar' : r < 0.051 ? 'oak' : r < 0.055 ? 'fallen_poplar' : null;
       default: return null;
     }
   }
@@ -491,19 +491,24 @@ export class WorldGen {
 
   // --- Spawn and map -------------------------------------------------------------------
 
+  // New worlds start in a Dappled Forest when one is within reach, so the autumn
+  // poplars are the first thing you see; otherwise on any open land near the origin.
   findSpawn() {
-    for (let radius = 0; radius < 2000; radius += 8) {
-      for (let a = 0; a < Math.max(1, radius / 4); a++) {
-        const ang = (a / Math.max(1, radius / 4)) * Math.PI * 2;
-        const x = Math.round(Math.cos(ang) * radius);
-        const z = Math.round(Math.sin(ang) * radius);
-        const col = this.column(x, z);
-        if (col.height > SEA + 1 && col.biome !== BIOME.MOUNTAINS && col.biome !== BIOME.DESERT && !this.treeTypeAt(x, z)) {
-          return { x: x + 0.5, y: col.height + 1, z: z + 0.5 };
+    const search = (maxRadius, ok) => {
+      for (let radius = 0; radius < maxRadius; radius += 8) {
+        for (let a = 0; a < Math.max(1, radius / 4); a++) {
+          const ang = (a / Math.max(1, radius / 4)) * Math.PI * 2;
+          const x = Math.round(Math.cos(ang) * radius);
+          const z = Math.round(Math.sin(ang) * radius);
+          const col = this.column(x, z);
+          if (col.height > SEA + 1 && !this.treeTypeAt(x, z) && ok(col)) return { x: x + 0.5, y: col.height + 1, z: z + 0.5 };
         }
       }
-    }
-    return { x: 0.5, y: HEIGHT - 10, z: 0.5 };
+      return null;
+    };
+    return search(1200, (col) => col.biome === BIOME.DAPPLED)
+      ?? search(2000, (col) => col.biome !== BIOME.MOUNTAINS && col.biome !== BIOME.DESERT)
+      ?? { x: 0.5, y: HEIGHT - 10, z: 0.5 };
   }
 
   mapColor(x, z) {
