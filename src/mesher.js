@@ -62,11 +62,51 @@ function faceUV(f, x, y, z) {
   }
 }
 
+// Biome colors for grass and oak leaves, from the column's temperature and humidity:
+// multipliers on the textures' own green, blended between four corners (cold/hot,
+// dry/wet) with a warm autumn cast in the Dappled Forest. Stored /2 in bytes.
+const TINTED = new Uint8Array(BLOCKS.length);
+for (const name of ['grass', 'tall_grass', 'oak_leaves']) TINTED[B[name]] = 1;
+const TINT_CORNERS = [[0.84, 0.93, 1.12], [0.78, 0.94, 1.02], [1.3, 1.04, 0.72], [0.84, 1.08, 0.78]];
+const smooth = (a, b, x) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+function biomeTint(col, out, o) {
+  const t = Math.min(1, Math.max(0, (col.temp + 0.45) / 0.9));
+  const h = Math.min(1, Math.max(0, (col.hum + 0.35) / 0.7));
+  const autumn = smooth(0.17, 0.07, col.temp) * smooth(-0.25, -0.15, col.temp) * smooth(-0.3, -0.2, col.hum);
+  for (let k = 0; k < 3; k++) {
+    const [c00, c01, c10, c11] = TINT_CORNERS.map((c) => c[k]);
+    let v = (c00 * (1 - h) + c01 * h) * (1 - t) + (c10 * (1 - h) + c11 * h) * t;
+    v += ([1.18, 1.0, 0.7][k] - v) * autumn * 0.65;
+    out[o + k] = Math.round(Math.min(2, v) * 127.5);
+  }
+}
+const colTint = new Uint8Array(18 * 18 * 3);
+const cornerTint = new Uint8Array(17 * 17 * 3);
+let tintOn = false;
+
+function computeTints(world, cx, cz) {
+  for (let z = 0; z < 18; z++) for (let x = 0; x < 18; x++) {
+    biomeTint(world.gen.column(cx * CHUNK + x - 1, cz * CHUNK + z - 1), colTint, (x + z * 18) * 3);
+  }
+  // Each block corner averages the four columns around it, so colors blend smoothly.
+  for (let z = 0; z <= 16; z++) for (let x = 0; x <= 16; x++) {
+    for (let k = 0; k < 3; k++) {
+      const a = colTint[(x + z * 18) * 3 + k], b = colTint[(x + 1 + z * 18) * 3 + k];
+      const c = colTint[(x + (z + 1) * 18) * 3 + k], d = colTint[(x + 1 + (z + 1) * 18) * 3 + k];
+      cornerTint[(x + z * 17) * 3 + k] = (a + b + c + d + 2) >> 2;
+    }
+  }
+}
+
 class Buffer {
   constructor() {
     this.pos = new Float32Array(1 << 16);
     this.tex = new Float32Array(1 << 16);
     this.light = new Float32Array(1 << 16);
+    this.tint = new Uint8Array(1 << 16);
     this.index = new Uint32Array(1 << 15);
     this.v = 0;
     this.i = 0;
@@ -84,6 +124,7 @@ class Buffer {
     this.pos = g(this.pos);
     this.tex = g(this.tex);
     this.light = g(this.light);
+    this.tint = g(this.tint);
   }
   vert(x, y, z, u, v, layer, s, b, shade) {
     if ((this.v + 1) * 3 > this.pos.length) this.grow();
@@ -91,6 +132,12 @@ class Buffer {
     this.pos[o] = x; this.pos[o + 1] = y; this.pos[o + 2] = z;
     this.tex[o] = u; this.tex[o + 1] = v; this.tex[o + 2] = layer;
     this.light[o] = s; this.light[o + 1] = b; this.light[o + 2] = shade;
+    if (tintOn) {
+      const c = (Math.min(16, Math.max(0, Math.round(x))) + Math.min(16, Math.max(0, Math.round(z))) * 17) * 3;
+      this.tint[o] = cornerTint[c]; this.tint[o + 1] = cornerTint[c + 1]; this.tint[o + 2] = cornerTint[c + 2];
+    } else {
+      this.tint[o] = 128; this.tint[o + 1] = 128; this.tint[o + 2] = 128;
+    }
     return this.v++;
   }
   quad(a, b, c, d, flip = false) {
@@ -113,6 +160,7 @@ class Buffer {
       pos: this.pos.slice(0, this.v * 3),
       tex: this.tex.slice(0, this.v * 3),
       light: this.light.slice(0, this.v * 3),
+      tint: this.tint.slice(0, this.v * 3),
       index: this.index.slice(0, this.i),
     };
   }
@@ -243,6 +291,7 @@ function cornerHeight(i, kind, sx, sz) {
 export function meshChunk(world, cx, cz) {
   fillPadded(world, cx, cz);
   computeLight();
+  computeTints(world, cx, cz);
   solidBuf.reset();
   waterBuf.reset();
   const lightOut = new Uint8Array(CHUNK * CHUNK * HEIGHT);
@@ -258,6 +307,7 @@ export function meshChunk(world, cx, cz) {
         const id = pad[i];
         if (id === 0) continue;
         const shape = SHAPES[id];
+        tintOn = TINTED[id] === 1;
         if (shape === SHAPE.CUBE) emitCube(id, i, lx, y, lz);
         else if (shape === SHAPE.CROSS) emitCross(id, i, lx, y, lz);
         else if (shape === SHAPE.LIQUID) emitLiquid(id, i, lx, y, lz);

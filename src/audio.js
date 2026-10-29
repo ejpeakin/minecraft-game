@@ -131,6 +131,25 @@ export class Audio {
     this.burst({ type: 'bandpass', freq: 900, q: 3, dur: 0.12, gain: 0.35 }, this.att(pos, listener), 1);
     this.tone(320, 0.12, { type: 'triangle', gain: 0.1, slide: 0.6, pos, listener });
   }
+  // A looping rain hiss; level 0..1, muffled (darker) indoors.
+  setRain(level, covered = false) {
+    if (!this.ctx) return;
+    if (!this.rainGain) {
+      if (level <= 0) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      this.rainFilter = this.ctx.createBiquadFilter();
+      this.rainFilter.type = 'lowpass';
+      this.rainGain = this.ctx.createGain();
+      this.rainGain.gain.value = 0;
+      src.connect(this.rainFilter).connect(this.rainGain).connect(this.master);
+      src.start();
+    }
+    const t = this.ctx.currentTime;
+    this.rainFilter.frequency.setTargetAtTime(covered ? 500 : 1800, t, 0.3);
+    this.rainGain.gain.setTargetAtTime(level * 0.16, t, 0.3);
+  }
   door(open, pos, listener) {
     this.burst({ type: 'bandpass', freq: open ? 560 : 430, q: 2.4, dur: 0.17, gain: 0.55, tone: open ? 170 : 125 }, this.att(pos, listener), 0.9 + Math.random() * 0.15);
   }

@@ -124,20 +124,27 @@ export class Sky {
     this.skyDarken = 0; // 0 day .. 11 night, for mob spawning light levels
   }
 
-  update(time, camera, dt, showClouds = true, fancy = true) {
+  // rain: 0 (clear) to 1 (full rain), from Weather.
+  update(time, camera, dt, showClouds = true, fancy = true, rain = 0) {
     const a = (time / DAY_TICKS) * Math.PI * 2;
     const e = Math.sin(a);
     const d = smoothstep(-0.2, 0.25, e);
-    this.daylight = lerp(0.2, 1, d);
-    this.skyDarken = Math.round((1 - d) * 11);
-    const top = mixc([0.012, 0.014, 0.05], [0.42, 0.62, 1.0], d);
+    this.daylight = lerp(0.2, 1, d) * (1 - 0.3 * rain);
+    this.skyDarken = Math.round((1 - d) * 11 + rain * 3);
+    // Rain turns the sky a flat gray.
+    let top = mixc([0.012, 0.014, 0.05], [0.42, 0.62, 1.0], d);
     let horizon = mixc([0.03, 0.04, 0.09], [0.74, 0.85, 1.0], d);
-    const dusk = Math.max(0, 1 - Math.abs(e) / 0.32) * (Math.cos(a) > 0 ? 1 : 1);
+    top = mixc(top, [0.34 * d + 0.02, 0.37 * d + 0.02, 0.42 * d + 0.04], rain * 0.85);
+    horizon = mixc(horizon, [0.5 * d + 0.03, 0.53 * d + 0.03, 0.58 * d + 0.05], rain * 0.85);
+    const dusk = Math.max(0, 1 - Math.abs(e) / 0.32) * (1 - rain);
     const sunsetColor = [1.0, 0.5, 0.22];
     this.domeMat.uniforms.uTop.value.set(...top);
     this.domeMat.uniforms.uHorizon.value.set(...horizon);
     // w carries strength with the sign telling which side (+x sunrise, -x sunset).
     this.domeMat.uniforms.uSunset.value.set(...sunsetColor, dusk * 0.85 * (Math.cos(a) >= 0 ? 1 : -1));
+    // Sunlight color: warm around sunrise and sunset, cool blue at night.
+    const warmth = Math.max(0, 1 - Math.abs(e) / 0.35) * (1 - rain);
+    this.lightTint = mixc(mixc([1, 1, 1], [1.0, 0.8, 0.62], warmth * 0.75), [0.72, 0.8, 1.0], (1 - d) * 0.9);
     horizon = mixc(horizon, sunsetColor, dusk * 0.25);
     this.fogColor = horizon;
     this.skyColor = top;
@@ -146,16 +153,16 @@ export class Sky {
     this.group.position.copy(p);
     const sunDir = new THREE.Vector3(Math.cos(a), Math.sin(a), 0.15).normalize();
     this.domeMat.uniforms.uSunDir.value.copy(sunDir);
-    const glow = fancy ? Math.max(0, Math.min(1, (e + 0.25) * 2.5)) : 0;
+    const glow = fancy ? Math.max(0, Math.min(1, (e + 0.25) * 2.5)) * (1 - rain) : 0;
     const warm = Math.max(0, 1 - Math.abs(e) / 0.4);
     this.domeMat.uniforms.uGlow.value.set(glow, glow * lerp(0.95, 0.7, warm), glow * lerp(0.85, 0.42, warm));
     this.sun.position.copy(sunDir).multiplyScalar(400);
     this.sun.lookAt(0, 0, 0);
     this.moon.position.copy(sunDir).multiplyScalar(-400);
     this.moon.lookAt(0, 0, 0);
-    this.sun.visible = e > -0.25;
-    this.moon.visible = e < 0.25;
-    this.starMat.opacity = Math.max(0, 1 - d * 1.6);
+    this.sun.visible = e > -0.25 && rain < 0.6;
+    this.moon.visible = e < 0.25 && rain < 0.6;
+    this.starMat.opacity = Math.max(0, 1 - d * 1.6) * (1 - rain);
     this.stars.visible = this.starMat.opacity > 0.01;
     this.stars.rotation.z = a;
 
@@ -163,7 +170,7 @@ export class Sky {
     this.clouds.visible = showClouds;
     this.clouds.position.set(0, 112 - p.y, 0);
     this.cloudTex.offset.set((p.x + this.cloudOffset) / 768, -p.z / 768);
-    const cl = lerp(0.12, 1, d);
+    const cl = lerp(0.12, 1, d) * (1 - 0.45 * rain);
     this.cloudMat.color.setRGB(cl, cl, cl * 1.02, THREE.SRGBColorSpace);
     this.cloudsUnder.visible = showClouds && fancy;
     this.cloudsUnder.position.set(0, 109 - p.y, 0);

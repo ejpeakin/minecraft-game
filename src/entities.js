@@ -2,12 +2,13 @@
 // TNT, and mobs (pigs, sheep, cows, chickens, zombies, creepers) with boxy textured
 // models, simple AI and spawning rules based on light level. Also explosions.
 import * as THREE from './three.js';
-import { BLOCKS, B, SOLID, FLUID } from './blocks.js';
+import { BLOCKS, B, SOLID, FLUID, SHAPES, SHAPE, shapeBoxes } from './blocks.js';
 import { ITEMS, blockDrops } from './items.js';
 import { moveEntity, fluidIn, touchesBlock, raycast } from './physics.js';
 import { HEIGHT } from './worldgen.js';
 import { mulberry32 } from './noise.js';
 import { DYE_COLORS } from './textures.js';
+import { itemGeometry } from './renderer.js';
 
 const lightCurve = (l) => Math.pow(0.8, 15 - l);
 let brightnessSetting = 0.5;
@@ -19,6 +20,63 @@ function brightness(world, sky, x, y, z) {
   const { sky: s, block: b } = world.getLight(Math.floor(x), Math.floor(y), Math.floor(z));
   const v = Math.max(lightCurve(s) * sky.daylight, lightCurve(b), 0.05);
   return v + (Math.sqrt(v) - v) * brightnessSetting * 0.6;
+}
+
+// --- Shadows -------------------------------------------------------------------------
+
+// A soft round shadow on the ground under a creature or item, fading as it rises.
+let shadowTexture = null;
+function shadowTex() {
+  if (!shadowTexture) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(16, 16, 2, 16, 16, 16);
+    g.addColorStop(0, 'rgba(0,0,0,0.62)');
+    g.addColorStop(0.6, 'rgba(0,0,0,0.38)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 32, 32);
+    shadowTexture = new THREE.CanvasTexture(c);
+  }
+  return shadowTexture;
+}
+const shadowGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+
+export class Shadow {
+  constructor(game, size) {
+    this.game = game;
+    this.size = size;
+    this.material = new THREE.MeshBasicMaterial({ map: shadowTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    this.mesh = new THREE.Mesh(shadowGeo, this.material);
+    this.mesh.renderOrder = 2;
+    game.scene.add(this.mesh);
+  }
+
+  update(x, y, z, scale = 1) {
+    const world = this.game.world;
+    let ground = -1;
+    for (let by = Math.floor(y + 0.01); by >= Math.floor(y) - 3; by--) {
+      const id = world.getBlock(Math.floor(x), by, Math.floor(z));
+      if (FLUID[id]) break;
+      if (SOLID[id]) {
+        ground = by + (SHAPES[id] === SHAPE.CUBE ? 1 : Math.min(1, Math.max(...shapeBoxes(id, () => 0, false).map((b) => b[4]), 0)));
+        break;
+      }
+    }
+    const height = y - ground;
+    const far = Math.hypot(x - this.game.player.x, z - this.game.player.z) > 40;
+    this.mesh.visible = ground >= 0 && height < 3 && !far;
+    if (!this.mesh.visible) return;
+    this.mesh.position.set(x, ground + 0.002, z);
+    this.mesh.scale.setScalar(this.size * scale * (1 - height * 0.15));
+    this.material.opacity = (1 - height / 3) * (0.35 + 0.65 * this.game.sky.daylight);
+  }
+
+  dispose() {
+    this.game.scene.remove(this.mesh);
+    this.material.dispose();
+  }
 }
 
 // --- Base entity -------------------------------------------------------------------
@@ -70,6 +128,7 @@ class Entity {
         if (o.material && o.userData.ownMaterial) o.material.dispose();
       });
     }
+    this.shadow?.dispose();
   }
 }
 
@@ -85,6 +144,7 @@ export class ItemEntity extends Entity {
     else { this.vx = (Math.random() - 0.5) * 3; this.vy = 3 + Math.random() * 2; this.vz = (Math.random() - 0.5) * 3; }
     this.mesh = game.entities.itemMesh(stack.id);
     game.scene.add(this.mesh);
+    this.shadow = new Shadow(game, 0.45);
   }
   update(dt) {
     this.age += dt;
@@ -110,6 +170,7 @@ export class ItemEntity extends Entity {
     this.mesh.position.set(this.x, this.y + bob, this.z);
     this.mesh.rotation.y = this.age * 1.6 + this.phase;
     this.game.entities.applyLight(this.mesh, this.x, this.y + 0.2, this.z);
+    this.shadow.update(this.x, this.y, this.z);
   }
 }
 
@@ -619,6 +680,7 @@ export class Mob extends Entity {
     Object.assign(this, buildFigure(kind));
     if (opts.yaw !== undefined) this.yaw = this.targetYaw = opts.yaw;
     game.scene.add(this.mesh);
+    this.shadow = new Shadow(game, Math.max(def.w, 0.5) * 1.25);
   }
 
   get hostile() {
@@ -990,6 +1052,7 @@ export class Mob extends Entity {
     this.mesh.rotation.y = this.yaw;
     const swell = this.fuse > 0 ? 1 + this.fuse * 0.12 : 1;
     const size = this.baby ? 0.5 : 1;
+    this.shadow.update(this.x, this.y, this.z, size);
     this.mesh.scale.set(swell * size, (1 + (swell - 1) * 0.5) * size, swell * size);
     if (this.deathTime > 0) return;
     const b = brightness(this.game.world, this.game.sky, this.x, this.y + this.h * 0.7, this.z);
@@ -1078,16 +1141,23 @@ export class EntityManager {
         return g;
       }
     }
-    let tex = this.iconTextures.get(id);
-    if (!tex) {
-      tex = new THREE.CanvasTexture(this.game.bank.icon(id));
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      tex.colorSpace = THREE.SRGBColorSpace;
-      this.iconTextures.set(id, tex);
+    // Flat items are solid one-pixel-thick models, like Minecraft's dropped items.
+    const tile = this.game.bank.flatTile(id);
+    let mesh;
+    if (tile) {
+      mesh = new THREE.Mesh(itemGeometry(id, tile), new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+      mesh.scale.setScalar(0.42);
+    } else {
+      let tex = this.iconTextures.get(id);
+      if (!tex) {
+        tex = new THREE.CanvasTexture(this.game.bank.icon(id));
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        this.iconTextures.set(id, tex);
+      }
+      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }));
     }
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), mat);
     mesh.position.y = 0.21;
     mesh.userData.ownMaterial = true;
     const g = new THREE.Group();

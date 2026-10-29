@@ -14,6 +14,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { UI } from './ui.js';
 import { Net, OLD_SCHOOL_RELAY } from './net.js';
+import { Weather } from './weather.js';
 import { BLOCKS, SOLID, B } from './blocks.js';
 import { SMELTING, fuelValue, maxStack } from './items.js';
 import { seedFromString } from './noise.js';
@@ -126,6 +127,7 @@ export class Game {
     this.bank = new TextureBank(this.safe);
     this.chunkRenderer = new ChunkRenderer(this.scene, this.bank);
     this.sky = new Sky(this.scene);
+    this.weather = new Weather(this);
     this.selection = new SelectionBox(this.scene);
     this.crack = new CrackOverlay(this.scene, this.bank.destroy);
     this.particles = new Particles(this.scene);
@@ -390,6 +392,9 @@ export class Game {
     this.ui.close();
     this.entities.clear();
     this.chunkRenderer.clear();
+    this.weather.mesh.visible = false;
+    this.weather.level = 0;
+    this.audio.setRain(0);
     this.world = null;
     this.worldId = null;
     this.state = 'menu';
@@ -654,6 +659,7 @@ export class Game {
     shared.uDaylight.value = this.sky.daylight;
     shared.uTime.value += dt;
     shared.uSunDir.value.copy(this.sky.sunDir);
+    shared.uSkyTint.value.set(...this.sky.lightTint);
     shared.uSkyColor.value.set(...f);
     shared.uFlicker.value = 1;
     this.spawnLeaves(dt, world, { x: pan.x, y: pan.y - 20, z: pan.z });
@@ -828,9 +834,11 @@ export class Game {
     this.manageChunks();
     this.particles.update(dt, (x, y, z) => SOLID[world.getBlock(x, y, z)] && BLOCKS[world.getBlock(x, y, z)].shape === 'cube');
     this.updateCamera(dt);
-    this.sky.update(world.time, this.camera, dt, this.settings.clouds, this.settings.fancyGraphics);
+    this.weather.update(dt, this.camera);
+    this.sky.update(world.time, this.camera, dt, this.settings.clouds, this.settings.fancyGraphics, this.weather.level);
     const shared = this.chunkRenderer.shared;
     shared.uSunDir.value.copy(this.sky.sunDir);
+    shared.uSkyTint.value.set(...this.sky.lightTint);
     shared.uSkyColor.value.set(...this.sky.fogColor);
     const ft = shared.uTime.value;
     shared.uFlicker.value = 0.96 + 0.025 * Math.sin(ft * 9.1) + 0.015 * Math.sin(ft * 23.7);

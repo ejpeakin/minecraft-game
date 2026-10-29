@@ -10,6 +10,8 @@ import { chunkKey } from './world.js';
 const VERT = /* glsl */ `
   attribute vec3 aTex;
   attribute vec3 aLight;
+  attribute vec3 aTint;
+  varying vec3 vTint;
   uniform float uTime;
   uniform float uWaterLayer;
   uniform float uLavaLayer;
@@ -20,6 +22,9 @@ const VERT = /* glsl */ `
   varying float vDist;
   void main() {
     vTex = aTex;
+    // Biome color, stored halved; geometry without one (entities) reads as zero.
+    vTint = aTint * 2.0;
+    if (vTint.r + vTint.g + vTint.b < 0.05) vTint = vec3(1.0);
     float L = floor(aTex.z + 0.5);
     if (abs(L - uWaterLayer) < 0.5) vTex.xy += vec2(uTime * 0.02, uTime * 0.05);
     else if (abs(L - uLavaLayer) < 0.5) vTex.xy += vec2(uTime * 0.01, uTime * 0.025);
@@ -76,10 +81,12 @@ const FRAG = /* glsl */ `
   uniform float uFlicker;
   uniform vec3 uSunDir;
   uniform vec3 uSkyColor;
+  uniform vec3 uSkyTint;
   varying vec3 vTex;
   varying vec3 vLight;
   varying vec3 vWorld;
   varying float vDist;
+  varying vec3 vTint;
   float curve(float l) { return pow(0.8, 15.0 * (1.0 - l)); }
   void main() {
     float layer = floor(vTex.z + 0.5);
@@ -88,13 +95,15 @@ const FRAG = /* glsl */ `
     vec2 L = mix(vLight.xy, uEntityLight, uEntity);
     float s = curve(L.x) * uDaylight;
     float b = curve(L.y) * mix(1.0, uFlicker, uFancy);
-    vec3 light = max(vec3(s), vec3(b, b * 0.9, b * 0.74));
+    vec3 light = max(vec3(s) * uSkyTint, vec3(b, b * 0.9, b * 0.74));
     light = max(light, vec3(0.05));
     // Brightness setting: lift the dark end of the curve, like Minecraft's slider.
     light = mix(light, sqrt(light), uBrightness * 0.6);
     float shade = vLight.z;
     if (abs(layer - uFireLayer) < 0.5) { light = vec3(1.0); shade = 0.9 + 0.1 * sin(uTime * 17.0 + vTex.x * 9.0); }
-    vec3 col = c.rgb * light * shade * uTint;
+    // Pixels marked with alpha 254 (grass, oak leaves) take the biome color.
+    vec3 tint = mix(vec3(1.0), vTint, clamp((1.0 - c.a) * 255.0, 0.0, 1.0));
+    vec3 col = c.rgb * tint * light * shade * uTint;
     float alpha = c.a * uOpacity;
 #ifdef WATER
     if (uFancy > 0.5) {
@@ -116,6 +125,45 @@ const FRAG = /* glsl */ `
   }
 `;
 
+// A flat 16x16 picture as a solid model one pixel thick, the way Minecraft draws items
+// in the hand and on the ground: a front and back for every pixel, and edge faces
+// around the outline. One unit across; colors are baked into the vertices.
+const itemGeos = new Map();
+export function itemGeometry(key, canvas) {
+  if (itemGeos.has(key)) return itemGeos.get(key);
+  const n = canvas.width;
+  const px = canvas.getContext('2d').getImageData(0, 0, n, n).data;
+  const solid = (x, y) => x >= 0 && y >= 0 && x < n && y < n && px[(y * n + x) * 4 + 3] > 128;
+  const pos = [], col = [], idx = [];
+  const c = new THREE.Color();
+  const quad = (pts, shade) => {
+    const base = pos.length / 3;
+    for (const p of pts) { pos.push(...p); col.push(c.r * shade, c.g * shade, c.b * shade); }
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const s = 1 / n, t = s / 2;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if (!solid(x, y)) continue;
+      const i = (y * n + x) * 4;
+      c.setRGB(px[i] / 255, px[i + 1] / 255, px[i + 2] / 255, THREE.SRGBColorSpace);
+      const x0 = x * s - 0.5, x1 = x0 + s, y1 = 0.5 - y * s, y0 = y1 - s;
+      quad([[x0, y0, t], [x1, y0, t], [x1, y1, t], [x0, y1, t]], 1);
+      quad([[x1, y0, -t], [x0, y0, -t], [x0, y1, -t], [x1, y1, -t]], 0.85);
+      if (!solid(x - 1, y)) quad([[x0, y0, -t], [x0, y0, t], [x0, y1, t], [x0, y1, -t]], 0.7);
+      if (!solid(x + 1, y)) quad([[x1, y0, t], [x1, y0, -t], [x1, y1, -t], [x1, y1, t]], 0.7);
+      if (!solid(x, y - 1)) quad([[x0, y1, t], [x1, y1, t], [x1, y1, -t], [x0, y1, -t]], 0.92);
+      if (!solid(x, y + 1)) quad([[x0, y0, -t], [x1, y0, -t], [x1, y0, t], [x0, y0, t]], 0.6);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  itemGeos.set(key, g);
+  return g;
+}
+
 export class ChunkRenderer {
   constructor(scene, bank) {
     this.scene = scene;
@@ -131,6 +179,7 @@ export class ChunkRenderer {
       uFlicker: { value: 1 },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) },
       uSkyColor: { value: new THREE.Vector3(0.7, 0.8, 1) },
+      uSkyTint: { value: new THREE.Vector3(1, 1, 1) },
       uFogColor: { value: new THREE.Vector3(0.6, 0.75, 1) },
       uFogNear: { value: 60 },
       uFogFar: { value: 90 },
@@ -234,6 +283,7 @@ export class ChunkRenderer {
     g.setAttribute('position', new THREE.BufferAttribute(d.pos, 3));
     g.setAttribute('aTex', new THREE.BufferAttribute(d.tex, 3));
     g.setAttribute('aLight', new THREE.BufferAttribute(d.light, 3));
+    g.setAttribute('aTint', new THREE.BufferAttribute(d.tint, 3, true));
     g.setIndex(new THREE.BufferAttribute(d.index, 1));
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(CHUNK / 2, HEIGHT / 2, CHUNK / 2), Math.hypot(CHUNK / 2, HEIGHT / 2, CHUNK / 2));
     const mesh = new THREE.Mesh(g, material);
