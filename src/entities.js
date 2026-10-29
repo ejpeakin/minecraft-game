@@ -4,7 +4,7 @@
 import * as THREE from './three.js';
 import { BLOCKS, B, SOLID, FLUID } from './blocks.js';
 import { ITEMS, blockDrops } from './items.js';
-import { moveEntity, fluidIn, touchesBlock } from './physics.js';
+import { moveEntity, fluidIn, touchesBlock, raycast } from './physics.js';
 import { HEIGHT } from './worldgen.js';
 import { mulberry32 } from './noise.js';
 import { DYE_COLORS } from './textures.js';
@@ -162,6 +162,98 @@ export class PrimedTNT extends Entity {
       this.dead = true;
       this.game.entities.explode(this.x, this.y + 0.5, this.z, 4);
     }
+  }
+}
+
+// --- Arrows ----------------------------------------------------------------------------
+
+// A box with one color baked into its vertices (the material color is the lighting).
+function coloredBox(w, h, d, color, x = 0, y = 0, z = 0) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.translate(x, y, z);
+  const c = [];
+  for (let i = 0; i < g.attributes.position.count; i++) c.push(color[0] / 255, color[1] / 255, color[2] / 255);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+  return g;
+}
+
+export class Arrow extends Entity {
+  constructor(game, x, y, z, vx, vy, vz, { shooter = null, damage = 6, pickup = false } = {}) {
+    super(game, x, y, z, 0.2, 0.2);
+    this.vx = vx; this.vy = vy; this.vz = vz;
+    this.shooter = shooter;
+    this.damageAmount = damage;
+    this.pickup = pickup;
+    this.stuck = false;
+    const material = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.mesh = new THREE.Group();
+    this.mesh.rotation.order = 'YXZ';
+    for (const g of [coloredBox(0.04, 0.04, 0.5, [120, 86, 44]), coloredBox(0.07, 0.07, 0.08, [130, 130, 136], 0, 0, 0.27),
+      coloredBox(0.12, 0.01, 0.1, [236, 236, 230], 0, 0, -0.22), coloredBox(0.01, 0.12, 0.1, [236, 236, 230], 0, 0, -0.22)]) {
+      const m = new THREE.Mesh(g, material);
+      m.userData.ownMaterial = true;
+      this.mesh.add(m);
+    }
+    game.scene.add(this.mesh);
+  }
+
+  update(dt) {
+    const game = this.game;
+    const world = game.world;
+    this.age += dt;
+    if (this.stuck) {
+      // Stuck arrows can be picked back up (if a player shot them) and fade after a minute.
+      const p = game.player;
+      if (this.pickup && !p.dead && this.distTo({ x: p.x, y: p.y + 0.6, z: p.z }) < 1.4 && !p.inventory.add({ id: 'arrow', count: 1 })) {
+        game.audio.pop();
+        this.dead = true;
+      }
+      if (this.age > 60) this.dead = true;
+      return;
+    }
+    const speed = Math.hypot(this.vx, this.vy, this.vz);
+    const steps = Math.max(1, Math.ceil((speed * dt) / 0.2));
+    const h = dt / steps;
+    for (let i = 0; i < steps && !this.dead && !this.stuck; i++) {
+      const nx = this.x + this.vx * h, ny = this.y + this.vy * h, nz = this.z + this.vz * h;
+      // Creatures first: the player (unless they shot it) and mobs.
+      const p = game.player;
+      const hits = (e, ex, ey, ez) => e.w && Math.abs(ex - e.x) < e.w / 2 + 0.1 && Math.abs(ez - e.z) < e.w / 2 + 0.1 && ey > e.y - 0.1 && ey < e.y + e.h + 0.1;
+      if (this.shooter !== p && !p.dead && hits(p, nx, ny, nz)) {
+        p.damage(this.damageAmount, { x: this.x - this.vx, z: this.z - this.vz, cause: 'arrow' });
+        this.dead = true;
+        break;
+      }
+      for (const m of game.entities.mobs) {
+        if (m === this.shooter || m.deathTime > 0 || !hits(m, nx, ny, nz)) continue;
+        if (m.damage(this.damageAmount, this.x - this.vx, this.z - this.vz, 0.6) && this.shooter === p && m.hostile) m.angry = 15;
+        game.audio.block('cloth', 'hit', m, p);
+        this.dead = true;
+        break;
+      }
+      if (this.dead) break;
+      const id = world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz));
+      if (SOLID[id]) {
+        this.stuck = true;
+        this.age = 0;
+        game.audio.block(BLOCKS[id].sound, 'hit', { x: nx, y: ny, z: nz }, p);
+        break;
+      }
+      this.x = nx; this.y = ny; this.z = nz;
+      this.vy -= 20 * h;
+      const drag = Math.pow(0.99, h * 20);
+      this.vx *= drag; this.vy *= drag; this.vz *= drag;
+    }
+    if (FLUID[world.getBlock(Math.floor(this.x), Math.floor(this.y), Math.floor(this.z))]) {
+      this.vx *= 0.8; this.vy *= 0.8; this.vz *= 0.8;
+    }
+    if (this.y < -20 || this.age > 30) this.dead = true;
+    this.mesh.position.set(this.x, this.y, this.z);
+    if (!this.stuck) {
+      this.mesh.rotation.y = Math.atan2(this.vx, this.vz);
+      this.mesh.rotation.x = -Math.atan2(this.vy, Math.hypot(this.vx, this.vz));
+    }
+    game.entities.applyLight(this.mesh, this.x, this.y, this.z);
   }
 }
 
@@ -383,6 +475,43 @@ const MOBS = {
       { name: 'leg', size: [4, 12, 4], at: [2, 12, 0], off: [0, -6, 0], color: [60, 60, 150], leg: 1 },
     ],
   },
+  skeleton: {
+    w: 0.6, h: 1.99, health: 20, speed: 2.4, hostile: true, burns: true, ranged: true,
+    drops: (r) => [{ id: 'bone', count: Math.floor(r() * 3) }, { id: 'arrow', count: Math.floor(r() * 3) }].filter((s) => s.count > 0),
+    parts: [
+      { name: 'head', size: [8, 8, 8], at: [0, 24, 0], off: [0, 4, 0], paint: withFront(solid([204, 204, 196], 0.06), (c, x, y) => {
+        px(c, x + 1, y + 3, '#2a2a2a', 2, 2); px(c, x + 5, y + 3, '#2a2a2a', 2, 2);
+        px(c, x + 3, y + 5, '#4a4a46', 2, 1);
+        for (let i = 1; i < 7; i++) px(c, x + i, y + 6, i % 2 ? '#3a3a38' : '#d8d8d0');
+      }) },
+      { name: 'body', size: [8, 12, 4], at: [0, 18, 0], paint: (c, f, x, y, w, h, r) => {
+        noisyFill(c, x, y, w, h, [54, 54, 52], 0.05, r);
+        for (let j = 1; j < h - 2; j += 2) noisyFill(c, x, y + j, w, 1, [200, 200, 192], 0.06, r);
+        if (f === 4 || f === 5) noisyFill(c, x + Math.floor(w / 2) - 1, y, 2, h, [210, 210, 202], 0.05, r);
+      } },
+      { name: 'arm', size: [2, 12, 2], at: [-5, 22, 0], off: [0, -5, 0], paint: solid([204, 204, 196]), arm: 0 },
+      { name: 'arm', size: [2, 12, 2], at: [5, 22, 0], off: [0, -5, 0], paint: solid([204, 204, 196]), arm: 1 },
+      { name: 'leg', size: [2, 12, 2], at: [-2, 12, 0], off: [0, -6, 0], paint: solid([204, 204, 196]), leg: 0 },
+      { name: 'leg', size: [2, 12, 2], at: [2, 12, 0], off: [0, -6, 0], paint: solid([204, 204, 196]), leg: 1 },
+    ],
+  },
+  spider: {
+    w: 1.4, h: 0.9, health: 16, speed: 3.0, hostile: true, damage: 2, climbs: true, calmInDaylight: true,
+    drops: (r) => [{ id: 'string', count: Math.floor(r() * 3) }].filter((s) => s.count > 0),
+    parts: [
+      { name: 'abdomen', size: [10, 8, 12], at: [0, 9, -9], paint: blotched([52, 44, 40], [74, 30, 26], 3, 0.08) },
+      { name: 'thorax', size: [6, 6, 6], at: [0, 9, 0], paint: solid([46, 40, 36], 0.08) },
+      { id: 'head', name: 'head', size: [8, 8, 8], at: [0, 9, 3], off: [0, 0, 4], paint: withFront(solid([50, 42, 38], 0.08), (c, x, y) => {
+        px(c, x + 1, y + 3, '#c81e1e', 2, 2); px(c, x + 5, y + 3, '#c81e1e', 2, 2);
+        px(c, x + 2, y + 2, '#a01818'); px(c, x + 5, y + 2, '#a01818'); px(c, x + 3, y + 4, '#ff4040'); px(c, x + 4, y + 4, '#ff4040');
+      }) },
+      // Eight legs splayed out from the thorax, tilted down to the ground.
+      ...[2, 1, 0, -1].flatMap((z, i) => [-1, 1].map((side) => ({
+        name: 'leg', size: [16, 2, 2], at: [side * 3, 9, z], off: [side * 8, 0, 0], paint: solid([44, 38, 34], 0.08),
+        rot: [0, side * [-0.6, -0.2, 0.2, 0.6][i], side * -0.6], spider: i % 2 === (side > 0 ? 0 : 1) ? 1 : 0,
+      }))),
+    ],
+  },
   creeper: {
     w: 0.6, h: 1.7, health: 20, speed: 2.2, hostile: true, explodes: true,
     drops: (r) => [{ id: 'gunpowder', count: 1 + Math.floor(r() * 2) }],
@@ -424,6 +553,7 @@ export function buildFigure(kind) {
     const parent = part.parent ? byId.get(part.parent) : null;
     const base = parent ? parent.spec.at : [0, 0, 0];
     pivot.position.set((part.at[0] - base[0]) * P, (part.at[1] - base[1]) * P, (part.at[2] - base[2]) * P);
+    if (part.rot) pivot.rotation.set(...part.rot);
     pivot.add(m);
     (parent ? parent.pivot : mesh).add(pivot);
     const entry = { spec: part, pivot };
@@ -468,6 +598,9 @@ export class Mob extends Entity {
     this.headPitch = 0;
     this.lookTimer = 0;
     this.idleYaw = 0;
+    this.shootCooldown = 1 + Math.random() * 2;
+    this.strafe = Math.random() < 0.5 ? 1 : -1;
+    this.angry = 0;
     this.stepHeight = 0.6;
     this.yaw = Math.random() * Math.PI * 2;
     this.targetYaw = this.yaw;
@@ -544,6 +677,28 @@ export class Mob extends Entity {
     return false;
   }
 
+  // A clear line from this mob's eyes to the target's.
+  canSee(target) {
+    const ex = this.x, ey = this.y + this.h * 0.85, ez = this.z;
+    const dx = target.x - ex, dy = target.y + 1.5 - ey, dz = target.z - ez;
+    const d = Math.hypot(dx, dy, dz);
+    if (d < 0.01) return true;
+    const hit = raycast(this.game.world, ex, ey, ez, dx / d, dy / d, dz / d, d);
+    return !hit;
+  }
+
+  // Shoot an arrow at the target, aiming a little high so it drops onto them.
+  shoot(target) {
+    const game = this.game;
+    const sx = this.x, sy = this.y + 1.45, sz = this.z;
+    const dx = target.x - sx, dy = target.y + 1.1 - sy, dz = target.z - sz;
+    const hd = Math.hypot(dx, dz) || 1;
+    const t = hd / 26;
+    const spread = () => (Math.random() - 0.5) * 1.2;
+    game.entities.add(new Arrow(game, sx + (dx / hd) * 0.6, sy, sz + (dz / hd) * 0.6, dx / t + spread(), dy / t + 10 * t + spread(), dz / t + spread(), { shooter: this, damage: 2 + Math.floor(Math.random() * 3) }));
+    game.audio.bow(this, game.player);
+  }
+
   hearts(n) {
     this.game.particles.burst(this.x - 0.5, this.y + this.h * 0.7, this.z - 0.5, [1, 0.25, 0.35], n);
   }
@@ -577,6 +732,7 @@ export class Mob extends Entity {
     this.vz = (dz / d) * 6 * knock;
     this.vy = 5 * Math.min(1, knock);
     this.fleeTime = this.hostile ? 0 : 5;
+    if (this.hostile) this.angry = 15; // a spider you hit stays angry even in daylight
     this.game.audio.mob(this.kind, 'hurt', this, this.game.player);
     if (this.health <= 0) this.deathTime = 0.0001;
     return true;
@@ -605,7 +761,12 @@ export class Mob extends Entity {
     }
 
     let moveX = 0, moveZ = 0, speed = this.def.speed;
-    const canTarget = this.hostile && !player.dead && player.mode === 'survival';
+    this.angry = Math.max(0, this.angry - dt);
+    let canTarget = this.hostile && !player.dead && player.mode === 'survival';
+    if (canTarget && this.def.calmInDaylight && this.angry <= 0) {
+      const l = game.world.getLight(Math.floor(this.x), Math.floor(this.y + 0.5), Math.floor(this.z));
+      if (game.sky.daylight > 0.6 && l.sky >= 12) canTarget = false;
+    }
     const pd = this.distTo(player);
     if (canTarget && pd < 18) {
       const dx = player.x - this.x;
@@ -626,10 +787,33 @@ export class Mob extends Entity {
           return;
         }
       }
-      if (close > 0.9) { moveX = dx / close; moveZ = dz / close; }
+      if (this.def.ranged) {
+        // Keep a bow's distance: back off when close, close in when far or out of sight,
+        // otherwise circle; shoot when there's a clear line.
+        const sight = this.canSee(player);
+        this.shootCooldown -= dt;
+        if (close > 0.01) {
+          if (pd < 6) { moveX = -dx / close; moveZ = -dz / close; }
+          else if (pd > 11 || !sight) { moveX = dx / close; moveZ = dz / close; }
+          else {
+            if (Math.random() < dt / 2.5) this.strafe = -this.strafe;
+            moveX = (-dz / close) * this.strafe; moveZ = (dx / close) * this.strafe;
+            speed *= 0.55;
+          }
+        }
+        if (sight && pd < 16 && this.shootCooldown <= 0) {
+          this.shootCooldown = 1.8 + Math.random() * 1.4;
+          this.shoot(player);
+        }
+      } else if (close > 0.9) { moveX = dx / close; moveZ = dz / close; }
+      if (this.kind === 'spider' && this.onGround && pd > 1.6 && pd < 4 && Math.random() < dt * 1.2) {
+        this.vy = 5.5;
+        this.vx += (dx / close) * 4;
+        this.vz += (dz / close) * 4;
+      }
       if (this.def.damage && pd < 1.6 && Math.abs(player.y - this.y) < 1.6 && this.attackCooldown <= 0) {
         this.attackCooldown = 1;
-        player.damage(this.def.damage, { x: this.x, z: this.z, cause: 'zombie' });
+        player.damage(this.def.damage, { x: this.x, z: this.z, cause: this.kind });
       }
     } else {
       if (this.def.explodes) this.fuse = Math.max(0, this.fuse - dt);
@@ -710,6 +894,8 @@ export class Mob extends Entity {
       this.vz += (wantZ - this.vz) * Math.min(1, accel * dt);
     }
     if ((moveX || moveZ) && this.collidedH && this.onGround) this.vy = 8.6;
+    // Spiders walk up walls.
+    if (this.def.climbs && (moveX || moveZ) && this.collidedH) this.vy = Math.max(this.vy, 3.2);
     if (this.inWater) this.vy = Math.max(this.vy, 1.6);
     this.physics(dt);
 
@@ -784,9 +970,14 @@ export class Mob extends Entity {
     const swing = Math.sin(this.walk) * Math.min(1, sp / 2) * 0.8;
     const flap = this.onGround ? 0 : Math.abs(Math.sin(this.age * 24)) * 1.2;
     for (const { spec, pivot } of this.parts) {
-      if (spec.leg !== undefined) pivot.rotation.x = spec.leg ? swing : -swing;
+      if (spec.leg !== undefined && spec.spider === undefined) pivot.rotation.x = spec.leg ? swing : -swing;
       if (spec.arm !== undefined) pivot.rotation.x = -Math.PI / 2 + (spec.arm ? swing : -swing) * 0.2;
       if (spec.wing !== undefined) pivot.rotation.z = spec.wing ? -flap : flap;
+      if (spec.spider !== undefined) {
+        const k = spec.spider ? swing : -swing;
+        pivot.rotation.y = spec.rot[1] + k * 0.45;
+        pivot.rotation.z = spec.rot[2] + Math.abs(k) * 0.25 * Math.sign(spec.rot[2]);
+      }
       if (spec.wool) pivot.visible = !this.sheared;
       if (spec.name === 'head' && !spec.parent) {
         pivot.rotation.y = this.headYaw;
@@ -983,7 +1174,9 @@ export class EntityManager {
           const { sky, block } = world.getLight(x, y, z);
           return Math.max(block, sky - game.sky.skyDarken) <= 7 && block <= 7;
         });
-        if (spot) this.add(new Mob(game, Math.random() < 0.6 ? 'zombie' : 'creeper', spot.x + 0.5, spot.y, spot.z + 0.5));
+        const r = Math.random();
+        const kind = r < 0.35 ? 'zombie' : r < 0.6 ? 'skeleton' : r < 0.8 ? 'creeper' : 'spider';
+        if (spot) this.add(new Mob(game, kind, spot.x + 0.5, spot.y, spot.z + 0.5));
       }
     }
     if (this.passiveTimer <= 0) {

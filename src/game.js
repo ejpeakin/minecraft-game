@@ -455,6 +455,7 @@ export class Game {
       player: `were slain by ${this.player.lastAttacker ?? 'another player'}`,
       fall: 'fell from a high place', lava: 'tried to swim in lava', drown: 'drowned', zombie: 'was slain by a Zombie',
       explosion: 'blew up', cactus: 'was pricked to death', starve: 'starved to death', void: 'fell out of the world',
+      arrow: 'was shot by a Skeleton', skeleton: 'was shot by a Skeleton', spider: 'was slain by a Spider',
     };
     document.getElementById('death-cause').textContent = `You ${msgs[cause] ?? 'died'}.`;
     this.state = 'dead';
@@ -880,6 +881,7 @@ export class Game {
     if (p.sprinting) fov *= 1.12;
     if (p.flying && p.sprinting) fov *= 1.05;
     if (p.headInWater) fov *= 0.92;
+    if (p.drawing > 0) fov *= 1 - Math.min(1, p.drawing) * 0.15; // a drawn bow zooms in
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 10);
     cam.updateProjectionMatrix();
   }

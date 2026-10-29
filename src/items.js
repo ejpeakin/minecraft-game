@@ -44,6 +44,11 @@ item('chicken', { label: 'Raw Chicken', food: { hunger: 2, saturation: 1.2 } });
 item('cooked_chicken', { label: 'Cooked Chicken', food: { hunger: 6, saturation: 7.2 } });
 item('feather', { label: 'Feather' });
 item('egg', { label: 'Egg', maxStack: 16 });
+item('bow', { label: 'Bow', maxStack: 1, durability: 384, bow: true });
+item('arrow', { label: 'Arrow' });
+item('string', { label: 'String' });
+item('bone', { label: 'Bone' });
+item('bone_meal', { label: 'Bone Meal', fertilizer: true });
 item('shears', { label: 'Shears', maxStack: 1, durability: 238, tool: { type: 'shears', level: 0, speed: 5, damage: 1 } });
 item('water_bucket', { label: 'Water Bucket', maxStack: 1, bucket: 'water' });
 item('lava_bucket', { label: 'Lava Bucket', maxStack: 1, bucket: 'lava' });
@@ -73,6 +78,22 @@ for (const [tier, t] of Object.entries(TIERS)) {
       fuel: tier === 'wooden' ? 10 : 0,
     });
   }
+}
+
+// Armor: helmet, chestplate, leggings, boots (armor slots 0-3), with Minecraft's
+// armor points and durability.
+export const ARMOR_SLOTS = ['helmet', 'chestplate', 'leggings', 'boots'];
+const ARMOR = {
+  leather: { label: 'Leather', names: ['Cap', 'Tunic', 'Pants', 'Boots'], points: [1, 3, 2, 1], durability: [55, 80, 75, 65], material: 'leather' },
+  golden: { label: 'Golden', points: [2, 5, 3, 1], durability: [77, 112, 105, 91], material: 'gold_ingot' },
+  iron: { label: 'Iron', points: [2, 6, 5, 2], durability: [165, 240, 225, 195], material: 'iron_ingot' },
+  diamond: { label: 'Diamond', points: [3, 8, 6, 3], durability: [363, 528, 495, 429], material: 'diamond' },
+};
+const ARMOR_NAMES = ['Helmet', 'Chestplate', 'Leggings', 'Boots'];
+for (const [mat, a] of Object.entries(ARMOR)) {
+  ARMOR_SLOTS.forEach((piece, i) => {
+    item(`${mat}_${piece}`, { label: `${a.label} ${(a.names ?? ARMOR_NAMES)[i]}`, maxStack: 1, durability: a.durability[i], armor: { slot: i, points: a.points[i], material: mat } });
+  });
 }
 
 export function itemLabel(name) {
@@ -177,6 +198,17 @@ shaped(['WWW', 'WWW', 'WWW'], { W: 'wheat' }, 'hay_bale');
 shaped(['H'], { H: 'hay_bale' }, 'wheat', 9);
 shaped(['I.I', '.I.'], { I: 'iron_ingot' }, 'bucket');
 shaped(['.I', 'I.'], { I: 'iron_ingot' }, 'shears');
+shaped(['.SX', 'S.X', '.SX'], { S: 'stick', X: 'string' }, 'bow');
+shaped(['F', 'S', 'E'], { F: 'flint', S: 'stick', E: 'feather' }, 'arrow', 4);
+shaped(['SS', 'SS'], { S: 'string' }, 'white_wool');
+shapeless(['bone'], 'bone_meal', 3);
+for (const [mat, a] of Object.entries(ARMOR)) {
+  const M = a.material;
+  shaped(['MMM', 'M.M'], { M }, `${mat}_helmet`);
+  shaped(['M.M', 'MMM', 'MMM'], { M }, `${mat}_chestplate`);
+  shaped(['MMM', 'M.M', 'M.M'], { M }, `${mat}_leggings`);
+  shaped(['M.M', 'M.M'], { M }, `${mat}_boots`);
+}
 shaped(['WWW', 'PPP'], { W: 'red_wool', P: PLANKS }, 'red_bed');
 
 const accepts = (key, name) => (Array.isArray(key) ? key.includes(name) : key === name);

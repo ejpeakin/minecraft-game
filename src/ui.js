@@ -79,7 +79,7 @@ export class UI {
     this.creativeTab = 'items';
     this.creativeSearch = '';
     this.palette = creativeOrder();
-    this.icons = { heart: hudIcon('heart'), food: hudIcon('food'), air: hudIcon('air') };
+    this.icons = { heart: hudIcon('heart'), food: hudIcon('food'), air: hudIcon('air'), armor: hudIcon('armor') };
     this.buildHud();
     this.bindMenus();
     this.bindInventoryEvents();
@@ -99,9 +99,10 @@ export class UI {
     for (let i = 0; i < 9; i++) this.hotbar.push(el('div', 'hslot', $('hotbar')));
     const mk = (id, n) => Array.from({ length: n }, () => el('img', '', $(id)));
     this.heartImgs = mk('hearts', 10);
+    this.armorImgs = mk('armor', 10);
     this.foodImgs = mk('food', 10);
     this.airImgs = mk('air', 10);
-    for (const img of [...this.heartImgs, ...this.foodImgs, ...this.airImgs]) img.alt = '';
+    for (const img of [...this.heartImgs, ...this.foodImgs, ...this.airImgs, ...this.armorImgs]) img.alt = '';
   }
 
   renderItem(container, stack) {
@@ -161,6 +162,9 @@ export class UI {
         this.icon(this.heartImgs[i], this.icons.heart, p.health - i * 2, 2, 1);
         this.icon(this.foodImgs[i], this.icons.food, p.food - i * 2, 2, 1);
       }
+      const armor = p.armorPoints;
+      $('armor').style.visibility = armor > 0 ? 'visible' : 'hidden';
+      if (armor > 0) for (let i = 0; i < 10; i++) this.icon(this.armorImgs[i], this.icons.armor, armor - i * 2, 2, 1);
       const showAir = p.headInWater || p.air < 15;
       $('air').style.visibility = showAir ? 'visible' : 'hidden';
       if (showAir) for (let i = 0; i < 10; i++) this.icon(this.airImgs[i], this.icons.air, p.air - i * 1.5, 1.5, 0.75);
@@ -592,6 +596,11 @@ export class UI {
     const top = el('div', 'inv-top', panel);
     if (kind === 'inventory' || kind === 'crafting') {
       if (kind === 'inventory') {
+        const armor = el('div', 'grid armor-grid', top);
+        for (let i = 0; i < 4; i++) {
+          const a = this.slot(armor, p.inventory.armor, i, { armor: i });
+          a.style.setProperty('--piece', `url(${this.bank.iconUrl(`iron_${['helmet', 'chestplate', 'leggings', 'boots'][i]}`)})`);
+        }
         const prev = el('div', 'player-preview', top);
         prev.appendChild(this.playerPortrait());
       }
@@ -599,7 +608,7 @@ export class UI {
       const wrap = el('div', '', craft);
       el('h3', '', wrap).textContent = 'Crafting';
       const grid = el('div', 'grid', wrap);
-      grid.style.gridTemplateColumns = `repeat(${this.craft.w}, 40px)`;
+      grid.style.gridTemplateColumns = `repeat(${this.craft.w}, 36px)`;
       for (let i = 0; i < this.craft.grid.length; i++) this.slot(grid, this.craft.grid, i, { craft: true });
       el('div', 'arrow', craft);
       this.outputSlot = this.slot(craft, null, 0, { output: true, big: true });
@@ -801,7 +810,8 @@ export class UI {
       this.cursor = { ...cloneStack(b.slots[b.index]), count: maxStack(b.slots[b.index].id) };
       return;
     }
-    this.cursor = clickSlot(b.slots, b.index, this.cursor, button);
+    const accepts = b.armor !== undefined ? (c) => ITEMS[c.id]?.armor?.slot === b.armor : undefined;
+    this.cursor = clickSlot(b.slots, b.index, this.cursor, button, accepts);
   }
 
   quickMove(b) {
@@ -812,7 +822,13 @@ export class UI {
     const kind = this.container.kind;
     const range = (a, z) => Array.from({ length: z - a }, (_, i) => a + i);
     let left = s;
-    if (b.player) {
+    const piece = ITEMS[s.id]?.armor;
+    if (b.player && piece && kind === 'inventory' && !p.inventory.armor[piece.slot]) {
+      p.inventory.armor[piece.slot] = s;
+      left = null;
+    } else if (b.armor !== undefined) {
+      left = addToSlots(inv, s, [...range(9, 36), ...range(0, 9)]);
+    } else if (b.player) {
       if (kind === 'chest') left = addToSlots(this.container.tile.slots, s);
       else if (kind === 'furnace') {
         const t = this.container.tile.slots;

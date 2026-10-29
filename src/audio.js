@@ -127,6 +127,10 @@ export class Audio {
     this.burst({ type: 'bandpass', freq: 2400, q: 1.6, dur: 0.035, gain: 0.32 }, 1, 1);
     this.tone(1250, 0.035, { type: 'triangle', gain: 0.07, slide: 0.55 });
   }
+  bow(pos, listener) {
+    this.burst({ type: 'bandpass', freq: 900, q: 3, dur: 0.12, gain: 0.35 }, this.att(pos, listener), 1);
+    this.tone(320, 0.12, { type: 'triangle', gain: 0.1, slide: 0.6, pos, listener });
+  }
   door(open, pos, listener) {
     this.burst({ type: 'bandpass', freq: open ? 560 : 430, q: 2.4, dur: 0.17, gain: 0.55, tone: open ? 170 : 125 }, this.att(pos, listener), 0.9 + Math.random() * 0.15);
   }
@@ -149,6 +153,9 @@ export class Audio {
     else if (kind === 'chicken') {
       for (let i = 0; i < (sound === 'hurt' ? 1 : 3); i++) this.tone(sound === 'hurt' ? 1100 : 900 + i * 60, 0.07, { type: 'square', gain: 0.05, slide: 1.3, pos, listener, delay: i * 0.12 });
     }
+    else if (kind === 'skeleton') {
+      for (let i = 0; i < 3; i++) this.burst({ type: 'bandpass', freq: 2600 + i * 400, q: 4, dur: 0.05, gain: 0.25 }, this.att(pos, listener) * (sound === 'hurt' ? 1.4 : 1), 1);
+    } else if (kind === 'spider') this.burst({ type: 'highpass', freq: sound === 'hurt' ? 2400 : 3200, q: 0.6, dur: 0.35, gain: 0.18 }, this.att(pos, listener));
     else if (kind === 'zombie') this.tone(sound === 'hurt' ? 160 : 95 + Math.random() * 20, sound === 'hurt' ? 0.25 : 0.7, { type: 'sawtooth', gain: 0.16, slide: 0.8, pos, listener });
     else if (kind === 'creeper' && sound === 'hurt') this.burst({ type: 'highpass', freq: 2000, q: 0.5, dur: 0.25, gain: 0.3 }, this.att(pos, listener));
   }
