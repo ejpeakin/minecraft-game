@@ -39,6 +39,7 @@ mouse, and a browser with WebGL 2.
 | E | Inventory |
 | Q / Shift+Q | Drop one / drop stack |
 | M | Map |
+| T | Chat (multiplayer) |
 | F3 | Debug info |
 | F1 | Hide HUD |
 | Esc | Pause, close screens |
@@ -101,6 +102,33 @@ can, and click outside the window to throw the held stack.
 Stairs are bottom-half only (no upside-down placement), and colors without a natural dye
 source in this game are available in creative mode.
 
+## Multiplayer
+
+Like Minecraft's "Open to LAN": one player hosts one of their worlds and friends join
+it with a four-letter code. Everyone sees each other, block edits show up for
+everyone, there's chat (T) and you can hit each other. The world stays saved on the
+host's computer, including what friends build. Up to 8 players per game.
+
+Multiplayer needs the Blockcraft server (`server.js`), which GitHub Pages can't run.
+Put it on [Render](https://render.com) for free:
+
+1. Sign in to Render with GitHub.
+2. Click **New → Blueprint** and pick this repository. Render reads `render.yaml`.
+3. Click **Apply**. After a few minutes you get a link like
+   `https://blockcraft-xxxx.onrender.com`.
+4. Everyone opens that link. One player goes to **Multiplayer → Host** on one of their
+   worlds and shares the code; the others enter it and click **Join Game**.
+
+You can also play from GitHub Pages by pasting the Render address into the
+Multiplayer screen's **Server address** box. Render's free plan puts the server to
+sleep after 15 minutes without players; the first connection then takes up to a
+minute. To run it on your own computer: `npm install`, then `npm start`.
+
+What's shared: player movement, every block placed or broken (including explosions),
+chat, hits and the time of day (the host's clock; only the host can sleep through the
+night). Each player has their own inventory, mobs and item drops, and chests and
+furnaces aren't shared yet.
+
 ## If the screen is black
 
 The hearts and hotbar show but the world doesn't: the 3D view isn't reaching your
@@ -128,7 +156,8 @@ If it's still black, a screenshot of the pause menu says what's going wrong.
 
 ```
 index.html, style.css     Page shell, HUD and menus
-server.js                 Zero-dependency static dev server
+server.js                 Serves the game and runs multiplayer rooms (WebSocket /ws)
+render.yaml               Render blueprint for hosting the server
 src/
   main.js                 Entry point (exposes window.game)
   game.js                 Loop, chunk streaming, saving, sleeping, glue
@@ -146,6 +175,7 @@ src/
   viewmodel.js            First-person hand and held item
   inventory.js            Stacks and Minecraft click rules
   ui.js                   HUD, container screens, map, menus
+  net.js                  Multiplayer client: rooms, other players, shared edits, chat
   input.js, audio.js      Keyboard/mouse with pointer lock; procedural sound
 ```
 

@@ -1,0 +1,10 @@
+# One-click deploy on Render (render.com): New → Blueprint → pick this repo.
+# Serves the game and runs the multiplayer server on the free plan.
+services:
+  - type: web
+    name: blockcraft
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health

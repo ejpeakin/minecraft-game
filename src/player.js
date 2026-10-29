@@ -117,7 +117,7 @@ export class Player {
     this.move(dt, input, active);
     this.vitals(dt);
     this.updateTarget();
-    if (active) this.act(dt, input);
+    if (active) this.game.net.capture(() => this.act(dt, input));
     else {
       this.mining = null;
       this.eating = 0;
@@ -325,6 +325,7 @@ export class Player {
       this.vy = Math.max(this.vy, 4.5);
     }
     if (this.seated) this.seated = null;
+    if (src.by) this.lastAttacker = src.by;
     if (this.health <= 0) this.die(src.cause);
   }
 
@@ -365,7 +366,7 @@ export class Player {
     this.target = raycast(world, ex, ey, ez, dx, dy, dz, reach);
     this.targetMob = null;
     let best = this.target ? this.target.t : reach;
-    for (const m of this.game.entities.mobs) {
+    for (const m of [...this.game.entities.mobs, ...this.game.net.targets()]) {
       const hw = m.w / 2;
       const t = rayAabb(ex, ey, ez, dx, dy, dz, m.x - hw, m.y, m.z - hw, m.x + hw, m.y + m.h, m.z + hw);
       if (t !== null && t < best && t < 3.6) {

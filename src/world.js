@@ -68,7 +68,40 @@ export class World {
     this.onFall = null;
     this.onDrop = null;
     this.onChunkDirty = null;
+    // Multiplayer: while `capture` is an array, setBlock records [x, y, z, id] there
+    // so the game can send the player's own edits. `applyingRemote` is set while
+    // another player's edits are applied, so they aren't sent back or drop items.
+    this.capture = null;
+    this.applyingRemote = false;
     if (save) this.load(save);
+  }
+
+  // Record edits for chunks that aren't generated yet (a joining player's world).
+  addEdits(list) {
+    for (const [x, y, z, id] of list) {
+      const cx = Math.floor(x / CHUNK);
+      const cz = Math.floor(z / CHUNK);
+      const key = chunkKey(cx, cz);
+      let mods = this.mods.get(key);
+      if (!mods) {
+        mods = new Map();
+        this.mods.set(key, mods);
+      }
+      mods.set(index(x - cx * CHUNK, y, z - cz * CHUNK), id);
+    }
+  }
+
+  // Apply another player's edits: live where the chunk is loaded, recorded otherwise.
+  applyRemoteEdits(list) {
+    this.applyingRemote = true;
+    try {
+      for (const [x, y, z, id] of list) {
+        if (this.isLoaded(x, z)) this.setBlock(x, y, z, id);
+        else this.addEdits([[x, y, z, id]]);
+      }
+    } finally {
+      this.applyingRemote = false;
+    }
   }
 
   load(save) {
@@ -182,6 +215,7 @@ export class World {
       this.mods.set(chunk.key, mods);
     }
     mods.set(i, id);
+    if (this.capture && !this.applyingRemote) this.capture.push([x, y, z, id]);
     const lightChanged = OPAQUE[old] !== OPAQUE[id] || BLOCKS[old].emit !== BLOCKS[id].emit || BLOCKS[old].filter !== BLOCKS[id].filter;
     this.markDirty(x, y, z, lightChanged);
 

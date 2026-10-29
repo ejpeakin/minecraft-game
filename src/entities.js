@@ -274,6 +274,23 @@ const MOBS = {
       { name: 'leg', size: [3, 12, 3], at: [3, 12, -5], off: [0, -6, 0], color: [210, 196, 176], leg: 0 },
     ],
   },
+  // Other players in multiplayer (never spawned as a mob).
+  player: {
+    w: 0.6, h: 1.8, health: 20, speed: 4.3, hostile: false,
+    drops: () => [],
+    parts: [
+      { name: 'head', size: [8, 8, 8], at: [0, 24, 0], off: [0, 4, 0], paint: skinPaint([196, 142, 106], (c, x, y) => {
+        px(c, x, y, '#3b2412', 8, 2); px(c, x, y + 2, '#3b2412', 1, 1); px(c, x + 7, y + 2, '#3b2412', 1, 1);
+        px(c, x + 1, y + 4, '#fff', 2, 1); px(c, x + 2, y + 4, '#4a3a8c'); px(c, x + 5, y + 4, '#fff', 2, 1); px(c, x + 5, y + 4, '#4a3a8c');
+        px(c, x + 3, y + 6, '#7a4a30', 2, 1);
+      }) },
+      { name: 'body', size: [8, 12, 4], at: [0, 18, 0], color: [47, 168, 176] },
+      { name: 'arm', size: [4, 12, 4], at: [-6, 22, 0], off: [0, -5, 0], color: [196, 142, 106], swing: 0 },
+      { name: 'arm', size: [4, 12, 4], at: [6, 22, 0], off: [0, -5, 0], color: [196, 142, 106], swing: 1 },
+      { name: 'leg', size: [4, 12, 4], at: [-2, 12, 0], off: [0, -6, 0], color: [58, 63, 156], leg: 0 },
+      { name: 'leg', size: [4, 12, 4], at: [2, 12, 0], off: [0, -6, 0], color: [58, 63, 156], leg: 1 },
+    ],
+  },
   zombie: {
     w: 0.6, h: 1.95, health: 20, speed: 2.4, hostile: true, burns: true, damage: 3,
     drops: (r) => (r() < 0.8 ? [{ id: 'rotten_flesh', count: 1 + Math.floor(r() * 2) }] : []),
@@ -313,6 +330,25 @@ function modelFor(kind) {
   return modelCache.get(kind);
 }
 
+// A posable model for a mob kind: { mesh, parts: [{ spec, pivot }], material }.
+export function buildFigure(kind) {
+  const def = MOBS[kind];
+  const { tex, geos } = modelFor(kind);
+  const material = new THREE.MeshBasicMaterial({ map: tex, vertexColors: true });
+  const mesh = new THREE.Group();
+  const parts = [];
+  def.parts.forEach((part, i) => {
+    const m = new THREE.Mesh(geos[i], material);
+    const pivot = new THREE.Group();
+    pivot.position.set(part.at[0] * P, part.at[1] * P, part.at[2] * P);
+    pivot.add(m);
+    mesh.add(pivot);
+    parts.push({ spec: part, pivot });
+  });
+  mesh.userData.ownMaterial = true;
+  return { mesh, parts, material };
+}
+
 export class Mob extends Entity {
   constructor(game, kind, x, y, z) {
     const def = MOBS[kind];
@@ -335,19 +371,7 @@ export class Mob extends Entity {
     this.burnTimer = 0;
     this.soundTimer = 4 + Math.random() * 10;
     this.drownTimer = 0;
-    const { tex, geos } = modelFor(kind);
-    this.material = new THREE.MeshBasicMaterial({ map: tex, vertexColors: true });
-    this.mesh = new THREE.Group();
-    this.parts = [];
-    def.parts.forEach((part, i) => {
-      const m = new THREE.Mesh(geos[i], this.material);
-      const pivot = new THREE.Group();
-      pivot.position.set(part.at[0] * P, part.at[1] * P, part.at[2] * P);
-      pivot.add(m);
-      this.mesh.add(pivot);
-      this.parts.push({ spec: part, pivot });
-    });
-    this.mesh.userData.ownMaterial = true;
+    Object.assign(this, buildFigure(kind));
     game.scene.add(this.mesh);
   }
 
@@ -686,11 +710,29 @@ export class EntityManager {
     return null;
   }
 
-  explode(x, y, z, power) {
+  destroy(destroyed) {
     const game = this.game;
     const world = game.world;
-    const r = Math.ceil(power);
+    for (const [bx, by, bz, id] of destroyed) {
+      if (id === B.tnt) {
+        world.setBlock(bx, by, bz, 0);
+        this.add(new PrimedTNT(game, bx, by, bz, 0.5 + Math.random() * 1));
+        continue;
+      }
+      world.ensureLoot(bx, by, bz);
+      world.setBlock(bx, by, bz, 0);
+      if (Math.random() < 0.3) this.dropBlockItems(bx, by, bz, id, { type: BLOCKS[id].tool, level: 3, speed: 1 });
+    }
+  }
+
+  // remote: another player's explosion. Its block changes arrive as edits, so only
+  // the effects and the damage to things on this screen happen here.
+  explode(x, y, z, power, { remote = false } = {}) {
+    const game = this.game;
+    const world = game.world;
+    const r = remote ? -1 : Math.ceil(power);
     const destroyed = [];
+    if (!remote) game.net?.send({ t: 'boom', x, y, z, power });
     for (let dx = -r; dx <= r; dx++) {
       for (let dy = -r; dy <= r; dy++) {
         for (let dz = -r; dz <= r; dz++) {
@@ -705,16 +747,7 @@ export class EntityManager {
         }
       }
     }
-    for (const [bx, by, bz, id] of destroyed) {
-      if (id === B.tnt) {
-        world.setBlock(bx, by, bz, 0);
-        this.add(new PrimedTNT(game, bx, by, bz, 0.5 + Math.random() * 1));
-        continue;
-      }
-      world.ensureLoot(bx, by, bz);
-      world.setBlock(bx, by, bz, 0);
-      if (Math.random() < 0.3) this.dropBlockItems(bx, by, bz, id, { type: BLOCKS[id].tool, level: 3, speed: 1 });
-    }
+    game.net ? game.net.capture(() => this.destroy(destroyed)) : this.destroy(destroyed);
     // Damage and knock back everything nearby, the player included.
     const targets = [...this.mobs, game.player];
     for (const e of targets) {

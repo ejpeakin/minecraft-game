@@ -187,9 +187,11 @@ export class UI {
   // --- Screens (menus) -------------------------------------------------------------------
 
   show(name) {
-    for (const s of ['title', 'worlds', 'settings', 'help', 'pause', 'death', 'loading']) $(`${s}-screen`).hidden = s !== name;
+    for (const s of ['title', 'worlds', 'multiplayer', 'settings', 'help', 'pause', 'death', 'loading']) $(`${s}-screen`).hidden = s !== name;
     this.menu = name;
     if (name === 'worlds') this.renderWorlds();
+    if (name === 'multiplayer') this.renderMultiplayer();
+    if (name === 'pause') $('btn-quit').textContent = this.game.worldId ? 'Save and Quit to Title' : 'Leave Game';
     if (name === 'settings') this.loadSettingsForm();
   }
 
@@ -298,6 +300,128 @@ export class UI {
     }
   }
 
+  // --- Multiplayer ------------------------------------------------------------------------
+
+  renderMultiplayer() {
+    const g = this.game;
+    $('mp-name').value = g.settings.playerName;
+    $('mp-server').value = g.settings.serverUrl;
+    $('mp-server-hint').textContent = g.net.serverUrl() && !g.settings.serverUrl
+      ? 'Using this page’s server. Friends open the same link to join.'
+      : 'Multiplayer runs on the Blockcraft server. Paste its address here (for example your-game.onrender.com).';
+    if (!this.mpBound) {
+      this.mpBound = true;
+      const saveFields = () => {
+        g.settings.playerName = $('mp-name').value.trim().slice(0, 16) || g.settings.playerName;
+        g.settings.serverUrl = $('mp-server').value.trim();
+        g.applySettings();
+      };
+      $('mp-name').addEventListener('change', saveFields);
+      $('mp-server').addEventListener('change', () => {
+        saveFields();
+        this.renderMultiplayer();
+      });
+      $('mp-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        saveFields();
+        const code = $('mp-code').value.trim().toUpperCase();
+        if (!/^[A-Z]{4}$/.test(code)) {
+          this.setMultiplayerStatus('Enter the four-letter code your friend sees.');
+          return;
+        }
+        await this.runMultiplayer(() => g.joinGame(code), 'Connecting…');
+      });
+    }
+    const list = $('mp-worlds');
+    list.innerHTML = '';
+    const worlds = g.saves.list();
+    if (!worlds.length) el('li', 'empty', list).textContent = 'Make a world in Singleplayer first, then host it here.';
+    for (const w of worlds) {
+      const li = el('li', '', list);
+      const meta = el('div', 'meta', li);
+      el('b', '', meta).textContent = w.name;
+      el('span', '', meta).textContent = `${w.mode === 'creative' ? 'Creative' : 'Survival'} · seed ${w.seed}`;
+      const host = el('button', 'mc-btn small', li);
+      host.type = 'button';
+      host.textContent = 'Host';
+      host.addEventListener('click', () => {
+        g.settings.playerName = $('mp-name').value.trim().slice(0, 16) || g.settings.playerName;
+        g.settings.serverUrl = $('mp-server').value.trim();
+        g.applySettings();
+        this.runMultiplayer(() => g.hostWorld(w.id), 'Starting your game…');
+      });
+    }
+    this.setMultiplayerStatus('');
+  }
+
+  async runMultiplayer(action, note) {
+    this.setMultiplayerStatus(`${note} (a sleeping server can take up to a minute to wake up)`);
+    try {
+      await action();
+    } catch (e) {
+      this.game.net.leave();
+      if (this.game.world) this.game.quitToTitle();
+      this.show('multiplayer');
+      this.setMultiplayerStatus(e.message);
+    }
+  }
+
+  setMultiplayerStatus(text) {
+    $('mp-status').textContent = text;
+  }
+
+  updateRoomBadge() {
+    const net = this.game.net;
+    const badge = $('room-badge');
+    if (!net?.active) {
+      badge.hidden = true;
+      return;
+    }
+    badge.hidden = false;
+    const n = net.players.size + 1;
+    badge.textContent = `Game ${net.code} · ${n} ${n === 1 ? 'player' : 'players'}${net.isHost ? ' · you host' : ''}`;
+  }
+
+  chatLine(text, kind = '') {
+    const log = $('chat-log');
+    const line = el('div', `line ${kind}`, log);
+    line.textContent = text;
+    while (log.children.length > 12) log.firstChild.remove();
+    setTimeout(() => line.classList.add('old'), 10000);
+  }
+
+  openChat() {
+    if (!this.chatBound) {
+      this.chatBound = true;
+      $('chat-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.game.net.chat($('chat-input').value);
+        this.closeChat();
+      });
+      $('chat-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.closeChat();
+        }
+        e.stopPropagation();
+      });
+    }
+    this.chatOpen = true;
+    $('chat-form').hidden = false;
+    $('chat-log').classList.add('open');
+    $('chat-input').value = '';
+    this.game.input.unlock();
+    setTimeout(() => $('chat-input').focus(), 0);
+  }
+
+  closeChat() {
+    this.chatOpen = false;
+    $('chat-form').hidden = true;
+    $('chat-log').classList.remove('open');
+    $('chat-input').blur();
+    this.game.resume();
+  }
+
   setLoading(fraction, note = '') {
     $('loading-bar').style.width = `${Math.round(fraction * 100)}%`;
     $('loading-note').textContent = note;
@@ -306,7 +430,7 @@ export class UI {
   // --- Containers ------------------------------------------------------------------------
 
   get isOpen() {
-    return this.screen !== null;
+    return this.screen !== null || !!this.chatOpen;
   }
 
   open(kind = 'inventory', tile = null, pos = null) {
