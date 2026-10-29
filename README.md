@@ -52,6 +52,10 @@ can, and click outside the window to throw the held stack.
   beaches, plains, forests, deserts, taiga, snowy plains, frozen oceans and mountains;
   spaghetti and cheese caves with lava below y 10; coal, iron, gold and diamond ores;
   oak, birch and spruce trees, cacti, flowers and grass.
+- **Fancy graphics** (Options, on by default): leaves, grass and flowers sway in the
+  wind; water reflects the sky at low angles, ripples and catches sun glints; a glowing
+  sun with sunsets that spread across the sky; two-layer clouds; flickering torch and
+  campfire light; slightly richer color and a soft vignette.
 - **Rendering**: per-chunk meshes with face culling, smooth lighting and ambient
   occlusion; flood-filled sky and block light (torches, glowstone, lava, campfires and
   lit furnaces glow); a day/night cycle with a sky gradient, sunsets, sun, moon, stars

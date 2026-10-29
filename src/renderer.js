@@ -13,16 +13,30 @@ const VERT = /* glsl */ `
   uniform float uTime;
   uniform float uWaterLayer;
   uniform float uLavaLayer;
+  uniform float uWave;
   varying vec3 vTex;
   varying vec3 vLight;
+  varying vec3 vWorld;
   varying float vDist;
   void main() {
     vTex = aTex;
     float L = floor(aTex.z + 0.5);
     if (abs(L - uWaterLayer) < 0.5) vTex.xy += vec2(uTime * 0.02, uTime * 0.05);
     else if (abs(L - uLavaLayer) < 0.5) vTex.xy += vec2(uTime * 0.01, uTime * 0.025);
-    vLight = aLight;
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    // The mesher adds 2 (plant tops) or 4 (leaves) to the shade of vertices that sway.
+    float flag = floor(aLight.z / 2.0);
+    vLight = vec3(aLight.xy, aLight.z - flag * 2.0);
+    vec3 p = position;
+    if (flag > 0.5 && uWave > 0.5) {
+      vec4 w0 = modelMatrix * vec4(position, 1.0);
+      float amp = flag > 1.5 ? 0.03 : 0.06;
+      float t = uTime * 1.7 + w0.x * 0.55 + w0.z * 0.4;
+      p.x += sin(t) * amp;
+      p.z += cos(t * 0.83 + 1.3) * amp;
+    }
+    vec4 world = modelMatrix * vec4(p, 1.0);
+    vWorld = world.xyz;
+    vec4 mv = viewMatrix * world;
     vDist = length(mv.xyz);
     gl_Position = projectionMatrix * mv;
   }
@@ -58,8 +72,13 @@ const FRAG = /* glsl */ `
   uniform float uFlash;
   uniform float uFireLayer;
   uniform float uTime;
+  uniform float uFancy;
+  uniform float uFlicker;
+  uniform vec3 uSunDir;
+  uniform vec3 uSkyColor;
   varying vec3 vTex;
   varying vec3 vLight;
+  varying vec3 vWorld;
   varying float vDist;
   float curve(float l) { return pow(0.8, 15.0 * (1.0 - l)); }
   void main() {
@@ -68,7 +87,7 @@ const FRAG = /* glsl */ `
     if (c.a < uAlphaTest) discard;
     vec2 L = mix(vLight.xy, uEntityLight, uEntity);
     float s = curve(L.x) * uDaylight;
-    float b = curve(L.y);
+    float b = curve(L.y) * mix(1.0, uFlicker, uFancy);
     vec3 light = max(vec3(s), vec3(b, b * 0.9, b * 0.74));
     light = max(light, vec3(0.05));
     // Brightness setting: lift the dark end of the curve, like Minecraft's slider.
@@ -76,9 +95,24 @@ const FRAG = /* glsl */ `
     float shade = vLight.z;
     if (abs(layer - uFireLayer) < 0.5) { light = vec3(1.0); shade = 0.9 + 0.1 * sin(uTime * 17.0 + vTex.x * 9.0); }
     vec3 col = c.rgb * light * shade * uTint;
+    float alpha = c.a * uOpacity;
+#ifdef WATER
+    if (uFancy > 0.5) {
+      // Rippled surface normal, sky reflection at grazing angles, and a sun glint.
+      vec3 viewDir = normalize(cameraPosition - vWorld);
+      float t = uTime * 1.5;
+      vec3 n = normalize(vec3(sin(vWorld.x * 1.7 + t) * 0.06 + sin(vWorld.z * 0.9 - t * 0.7) * 0.04, 1.0, cos(vWorld.z * 1.5 + t * 1.1) * 0.06));
+      float fres = pow(1.0 - clamp(dot(n, viewDir), 0.0, 1.0), 3.0);
+      col = mix(col, uSkyColor * max(s, 0.08), fres * 0.65);
+      float spec = pow(max(dot(n, normalize(uSunDir + viewDir)), 0.0), 90.0) * smoothstep(0.0, 0.2, uSunDir.y) * curve(L.x);
+      col += vec3(1.0, 0.92, 0.75) * spec * 0.9;
+      alpha = mix(alpha, 0.92, fres);
+    }
+#endif
+    if (uFancy > 0.5) col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, 1.12);
     col = mix(col, vec3(1.0), uFlash);
     float fog = smoothstep(uFogNear, uFogFar, vDist);
-    gl_FragColor = vec4(mix(col, uFogColor, fog), c.a * uOpacity);
+    gl_FragColor = vec4(mix(col, uFogColor, fog), alpha);
   }
 `;
 
@@ -92,6 +126,11 @@ export class ChunkRenderer {
       uAtlasGrid: { value: new THREE.Vector2(...(bank.atlasGrid ?? [16, 16])) },
       uDaylight: { value: 1 },
       uBrightness: { value: 0.5 },
+      uFancy: { value: 1 },
+      uWave: { value: 1 },
+      uFlicker: { value: 1 },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uSkyColor: { value: new THREE.Vector3(0.7, 0.8, 1) },
       uFogColor: { value: new THREE.Vector3(0.6, 0.75, 1) },
       uFogNear: { value: 60 },
       uFogFar: { value: 90 },
@@ -101,18 +140,21 @@ export class ChunkRenderer {
       uFireLayer: { value: bank.fireLayer },
     };
     this.solidMat = this.makeMaterial({ alphaTest: 0.5 });
-    this.waterMat = this.makeMaterial({ alphaTest: 0.01, opacity: 0.72, transparent: true });
+    this.waterMat = this.makeMaterial({ alphaTest: 0.01, opacity: 0.72, transparent: true, water: true });
     this.meshes = new Map();
     this.group = new THREE.Group();
     scene.add(this.group);
     this.buildMs = 0;
   }
 
-  makeMaterial({ alphaTest = 0.5, opacity = 1, transparent = false, entity = false, side = THREE.FrontSide } = {}) {
+  makeMaterial({ alphaTest = 0.5, opacity = 1, transparent = false, entity = false, water = false, side = THREE.FrontSide } = {}) {
+    const defines = {};
+    if (this.bank.safe) defines.SAFE = '';
+    if (water) defines.WATER = '';
     return new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
-      defines: this.bank.safe ? { SAFE: '' } : {},
+      defines,
       uniforms: {
         ...this.shared,
         uAlphaTest: { value: alphaTest },

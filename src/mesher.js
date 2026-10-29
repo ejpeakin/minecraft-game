@@ -288,6 +288,7 @@ function emitCube(id, i, x, y, z) {
     const corners = CORNERS[f];
     const offs = AO_OFF[f];
     const shade = FACE_SHADE[f];
+    const sway = BLOCKS[id].leaves ? 4 : 0; // see VERT in renderer.js
     const v = [0, 0, 0, 0];
     const ao = [0, 0, 0, 0];
     for (let c = 0; c < 4; c++) {
@@ -303,7 +304,7 @@ function emitCube(id, i, x, y, z) {
       const p = corners[c];
       let [u, vv] = faceUV(f, p[0], p[1], p[2]);
       if (rot) [u, vv] = [vv, 1 - u];
-      v[c] = buf.vert(x + p[0], y + p[1], z + p[2], u, vv, layer, ls / cnt / 15, lb / cnt / 15, shade * AO_CURVE[ao[c]]);
+      v[c] = buf.vert(x + p[0], y + p[1], z + p[2], u, vv, layer, ls / cnt / 15, lb / cnt / 15, shade * AO_CURVE[ao[c]] + sway);
     }
     buf.quad(v[0], v[1], v[2], v[3], ao[0] + ao[2] < ao[1] + ao[3]);
   }
@@ -336,7 +337,8 @@ function emitBoxes(id, i, x, y, z, boxes) {
   }
 }
 
-function crossQuads(buf, layer, i, x, y, z, inset, height, shade) {
+// sway: added to the shade of the top vertices so the vertex shader waves them.
+function crossQuads(buf, layer, i, x, y, z, inset, height, shade, sway = 0) {
   const ls = sky[i] / 15;
   const lb = blk[i] / 15;
   const a = inset;
@@ -348,15 +350,15 @@ function crossQuads(buf, layer, i, x, y, z, inset, height, shade) {
   for (const [[ax, az], [bx, bz]] of diag) {
     const v0 = buf.vert(x + ax, y, z + az, 0, 0, layer, ls, lb, shade);
     const v1 = buf.vert(x + bx, y, z + bz, 1, 0, layer, ls, lb, shade);
-    const v2 = buf.vert(x + bx, y + height, z + bz, 1, height, layer, ls, lb, shade);
-    const v3 = buf.vert(x + ax, y + height, z + az, 0, height, layer, ls, lb, shade);
+    const v2 = buf.vert(x + bx, y + height, z + bz, 1, height, layer, ls, lb, shade + sway);
+    const v3 = buf.vert(x + ax, y + height, z + az, 0, height, layer, ls, lb, shade + sway);
     buf.quad(v0, v1, v2, v3);
     buf.quad(v1, v0, v3, v2);
   }
 }
 
 function emitCross(id, i, x, y, z) {
-  crossQuads(solidBuf, FACE_TEX[id * 6 + 4], i, x, y, z, 0.15, 1, 0.9);
+  crossQuads(solidBuf, FACE_TEX[id * 6 + 4], i, x, y, z, 0.15, 1, 0.9, 2);
 }
 
 function emitFire(i, x, y, z) {
