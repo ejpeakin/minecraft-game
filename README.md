@@ -96,6 +96,29 @@ can, and click outside the window to throw the held stack.
 Stairs are bottom-half only (no upside-down placement), and colors without a natural dye
 source in this game are available in creative mode.
 
+## If the screen is black
+
+The hearts and hotbar show but the world doesn't: the 3D view isn't reaching your
+screen. Try these in order.
+
+1. **Make sure you have the newest version.** The title screen shows a version under
+   the buttons. If it doesn't match the latest one, open the game in a new Incognito
+   window (Ctrl+Shift+N) so the browser can't use an old saved copy.
+2. **Let the self-test run.** When a world loads, the game draws a test picture first.
+   If it doesn't come out right, a red message explains why and the game reloads in
+   Safe graphics.
+3. **Turn on Safe graphics yourself:** Esc → Options → Safe graphics, or add `#safe` to
+   the end of the address. It draws with the older WebGL 1 and a simpler texture
+   setup that school Chromebooks and older laptops handle better.
+4. **Check the pause menu.** Esc shows the version, graphics mode, graphics chip, view
+   size, light level and self-test result. "light sky 0" means you're underground
+   or it's night, so it's just dark: raise Options → Brightness or place a torch.
+5. **Check the browser.** In Chrome, Settings → System → "Use graphics acceleration
+   when available" should be on. On a managed school device an administrator may have
+   turned it off; then try another device.
+
+If it's still black, a screenshot of the pause menu says what's going wrong.
+
 ## Code layout
 
 ```
