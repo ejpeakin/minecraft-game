@@ -100,6 +100,7 @@ export class Sky {
       img.data[i + 3] = on ? 220 : 0;
     }
     cctx.putImageData(img, 0, 0);
+    this.buildCloudBoxes(img.data, scene);
     this.cloudTex = new THREE.CanvasTexture(cc);
     this.cloudTex.magFilter = THREE.NearestFilter;
     this.cloudTex.minFilter = THREE.NearestFilter;
@@ -110,18 +111,68 @@ export class Sky {
     this.clouds.rotation.x = -Math.PI / 2;
     this.clouds.renderOrder = 2;
     this.group.add(this.clouds);
-    // Fancy clouds: a darker copy a few blocks below reads as thickness from underneath.
-    this.cloudUnderMat = this.cloudMat.clone();
-    this.cloudsUnder = new THREE.Mesh(this.clouds.geometry, this.cloudUnderMat);
-    this.cloudsUnder.rotation.x = -Math.PI / 2;
-    this.cloudsUnder.renderOrder = 2;
-    this.group.add(this.cloudsUnder);
     this.cloudOffset = 0;
 
     this.daylight = 1;
     this.fogColor = [0.7, 0.8, 1];
     this.skyColor = [0.5, 0.7, 1];
     this.skyDarken = 0; // 0 day .. 11 night, for mob spawning light levels
+  }
+
+  // Fancy clouds like Minecraft's: every cloud cell is a 12 x 4 x 12 box, with only the
+  // outside faces built. One 768-block tile of them repeats; 2 x 2 tiles always cover
+  // the 360 blocks around the camera that clouds are drawn out to.
+  buildCloudBoxes(data, scene) {
+    const N = 64, C = 12, T = 4;
+    const on = (x, z) => data[((((z % N) + N) % N) * N + (((x % N) + N) % N)) * 4 + 3] > 0;
+    const pos = [], col = [], idx = [];
+    const quad = (pts, shade) => {
+      const v = pos.length / 3;
+      for (const pt of pts) { pos.push(...pt); col.push(shade); }
+      idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+    };
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      if (!on(x, z)) continue;
+      const x0 = x * C, x1 = x0 + C, z0 = z * C, z1 = z0 + C;
+      quad([[x0, T, z0], [x0, T, z1], [x1, T, z1], [x1, T, z0]], 1);
+      quad([[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]], 0.7);
+      if (!on(x - 1, z)) quad([[x0, 0, z0], [x0, 0, z1], [x0, T, z1], [x0, T, z0]], 0.9);
+      if (!on(x + 1, z)) quad([[x1, 0, z1], [x1, 0, z0], [x1, T, z0], [x1, T, z1]], 0.9);
+      if (!on(x, z - 1)) quad([[x1, 0, z0], [x0, 0, z0], [x0, T, z0], [x1, T, z0]], 0.8);
+      if (!on(x, z + 1)) quad([[x0, 0, z1], [x1, 0, z1], [x1, T, z1], [x0, T, z1]], 0.8);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('shade', new THREE.Float32BufferAttribute(col, 1));
+    g.setIndex(idx);
+    g.computeBoundingSphere();
+    // Colors are raw like the sky dome's. Clouds fade out with distance so the edge never
+    // shows. Drawn twice: depth first, then color where that depth won, so the faces of
+    // see-through clouds don't stack up darker where they overlap.
+    const uniforms = { uColor: { value: new THREE.Vector3(1, 1, 1) }, uOpacity: { value: 0.8 } };
+    const shader = {
+      uniforms,
+      vertexShader: `attribute float shade; varying float vShade; varying float vDist;
+        void main(){ vShade = shade; vec4 mv = modelViewMatrix * vec4(position, 1.0); vDist = length(mv.xyz); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform vec3 uColor; uniform float uOpacity; varying float vShade; varying float vDist;
+        void main(){ float a = uOpacity * (1.0 - smoothstep(170.0, 350.0, vDist)); if (a < 0.01) discard; gl_FragColor = vec4(uColor * vShade, a); }`,
+      transparent: true,
+      side: THREE.DoubleSide,
+    };
+    this.cloudBoxMat = new THREE.ShaderMaterial({ ...shader, depthWrite: false, depthFunc: THREE.LessEqualDepth });
+    const depthMat = new THREE.ShaderMaterial({ ...shader, colorWrite: false, depthWrite: true });
+    this.cloudBoxes = new THREE.Group();
+    this.cloudTiles = [];
+    for (let i = 0; i < 4; i++) {
+      const depth = new THREE.Mesh(g, depthMat);
+      depth.renderOrder = 3;
+      const color = new THREE.Mesh(g, this.cloudBoxMat);
+      color.renderOrder = 4;
+      this.cloudBoxes.add(depth, color);
+      this.cloudTiles.push(depth, color);
+    }
+    scene.add(this.cloudBoxes);
+    this.cloudTileSize = N * C;
   }
 
   // rain: 0 (clear) to 1 (full rain), from Weather.
@@ -167,14 +218,18 @@ export class Sky {
     this.stars.rotation.z = a;
 
     this.cloudOffset += dt * 0.6;
-    this.clouds.visible = showClouds;
+    // Fancy: 3D clouds at y 108-112, drifting the same way as the flat layer (fast).
+    const tile = this.cloudTileSize;
+    const ox = Math.floor((p.x + this.cloudOffset - tile / 2) / tile) * tile - this.cloudOffset;
+    const oz = Math.floor((p.z - tile / 2) / tile) * tile;
+    this.cloudTiles.forEach((m, i) => m.position.set(ox + ((i >> 1) & 1) * tile, 108, oz + (i >> 2) * tile));
+    this.cloudBoxes.visible = showClouds && fancy;
+    this.clouds.visible = showClouds && !fancy;
     this.clouds.position.set(0, 112 - p.y, 0);
     this.cloudTex.offset.set((p.x + this.cloudOffset) / 768, -p.z / 768);
     const cl = lerp(0.12, 1, d) * (1 - 0.45 * rain);
     this.cloudMat.color.setRGB(cl, cl, cl * 1.02, THREE.SRGBColorSpace);
-    this.cloudsUnder.visible = showClouds && fancy;
-    this.cloudsUnder.position.set(0, 109 - p.y, 0);
-    this.cloudUnderMat.color.setRGB(cl * 0.8, cl * 0.8, cl * 0.84, THREE.SRGBColorSpace);
+    this.cloudBoxMat.uniforms.uColor.value.set(cl, cl, cl * 1.02);
     this.sunDir = sunDir;
   }
 }

@@ -88,6 +88,29 @@ const FRAG = /* glsl */ `
   varying float vDist;
   varying vec3 vTint;
   float curve(float l) { return pow(0.8, 15.0 * (1.0 - l)); }
+#ifdef SHADOWS
+  // Sun shadows: the depth of the world as the sun sees it, around the player.
+  uniform sampler2D uShadowMap;
+  uniform mat4 uShadowMatrix;
+  uniform float uShadowOn;
+  uniform float uShadowTexel;
+  float sunVisibility(vec3 n) {
+    // Nudged out along the face so a face doesn't shadow itself.
+    vec4 sp = uShadowMatrix * vec4(vWorld + n * 0.045, 1.0);
+    vec3 p = sp.xyz / sp.w * 0.5 + 0.5;
+    if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0 || p.z >= 1.0) return 1.0;
+    float lit = 0.0;
+    for (int i = -1; i <= 1; i++) {
+      for (int j = -1; j <= 1; j++) {
+        lit += step(p.z - 0.00025, texture2D(uShadowMap, p.xy + vec2(float(i), float(j)) * uShadowTexel).r);
+      }
+    }
+    lit /= 9.0;
+    // Fade out toward the edge of the shadowed area instead of stopping sharply.
+    vec2 e = abs(p.xy - 0.5) * 2.0;
+    return mix(lit, 1.0, smoothstep(0.75, 1.0, max(e.x, e.y)));
+  }
+#endif
   void main() {
     float layer = floor(vTex.z + 0.5);
     vec4 c = tile(vTex.xy, layer);
@@ -95,7 +118,20 @@ const FRAG = /* glsl */ `
     vec2 L = mix(vLight.xy, uEntityLight, uEntity);
     float s = curve(L.x) * uDaylight;
     float b = curve(L.y) * mix(1.0, uFlicker, uFancy);
-    vec3 light = max(vec3(s) * uSkyTint, vec3(b, b * 0.9, b * 0.74));
+    vec3 sun = vec3(s) * uSkyTint;
+#ifdef SHADOWS
+    if (uShadowOn > 0.0 && uEntity < 0.5) {
+      // The face's own direction, turned toward the camera (plants are two-sided).
+      vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+      if (dot(n, cameraPosition - vWorld) < 0.0) n = -n;
+      float vis = sunVisibility(n);
+      vis *= mix(1.0, smoothstep(-0.04, 0.14, dot(n, uSunDir)), 0.85);
+      // Shade keeps the sky's ambient light and turns a little cool; sunlit faces warm.
+      float shade = uShadowOn * (1.0 - vis) * L.x;
+      sun *= mix(vec3(1.03, 1.0, 0.95), vec3(0.6, 0.63, 0.7), shade);
+    }
+#endif
+    vec3 light = max(sun, vec3(b, b * 0.9, b * 0.74));
     light = max(light, vec3(0.05));
     // Brightness setting: lift the dark end of the curve, like Minecraft's slider.
     light = mix(light, sqrt(light), uBrightness * 0.6);
@@ -164,6 +200,21 @@ export function itemGeometry(key, canvas) {
   return g;
 }
 
+// Depth pass for sun shadows: same vertices (leaves still wave), and leaf holes let
+// light through.
+const DEPTH_FRAG = /* glsl */ `
+  precision highp float;
+  precision highp sampler2DArray;
+  uniform sampler2DArray uAtlas;
+  varying vec3 vTex;
+  void main() {
+    if (texture(uAtlas, vec3(vTex.xy, floor(vTex.z + 0.5))).a < 0.5) discard;
+    gl_FragColor = vec4(1.0);
+  }
+`;
+
+const SHADOW_LAYER = 1;
+
 export class ChunkRenderer {
   constructor(scene, bank) {
     this.scene = scene;
@@ -187,7 +238,14 @@ export class ChunkRenderer {
       uWaterLayer: { value: bank.waterLayer },
       uLavaLayer: { value: bank.lavaLayer },
       uFireLayer: { value: bank.fireLayer },
+      uShadowMap: { value: null },
+      uShadowMatrix: { value: new THREE.Matrix4() },
+      uShadowOn: { value: 0 },
+      uShadowTexel: { value: 1 / 2048 },
     };
+    // Sun shadows need WebGL 2 (a depth texture and a texture array); Safe graphics
+    // goes without.
+    if (!bank.safe) this.setupShadows();
     this.solidMat = this.makeMaterial({ alphaTest: 0.5 });
     this.waterMat = this.makeMaterial({ alphaTest: 0.01, opacity: 0.72, transparent: true, water: true });
     this.meshes = new Map();
@@ -196,9 +254,57 @@ export class ChunkRenderer {
     this.buildMs = 0;
   }
 
+  setupShadows() {
+    const size = 2048;
+    const depthTexture = new THREE.DepthTexture(size, size, THREE.UnsignedIntType);
+    this.shadow = {
+      size,
+      radius: 40, // blocks covered each way from the player
+      target: new THREE.WebGLRenderTarget(size, size, { depthTexture, depthBuffer: true, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter }),
+      camera: new THREE.OrthographicCamera(-40, 40, 40, -40, 1, 320),
+      material: new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: DEPTH_FRAG, uniforms: this.shared }),
+    };
+    this.shadow.camera.layers.set(SHADOW_LAYER);
+    this.shadow.camera.up.set(0, 0, 1); // the sun moves across x and y, so z is never along it
+    this.shared.uShadowMap.value = depthTexture;
+    this.shared.uShadowTexel.value = 1 / size;
+  }
+
+  // Draw the world's depth as the sun sees it, around `center`. strength 0..1 fades
+  // shadows at dawn, dusk and in rain; 0 turns them off.
+  renderShadows(renderer, scene, center, sunDir, strength) {
+    const sh = this.shadow;
+    if (!sh || strength <= 0.01) {
+      this.shared.uShadowOn.value = 0;
+      return;
+    }
+    const cam = sh.camera;
+    cam.position.copy(center).addScaledVector(sunDir, 160);
+    cam.lookAt(center);
+    cam.updateMatrixWorld();
+    // Move in whole shadow-map texels so shadow edges don't crawl as you walk.
+    const texel = (2 * sh.radius) / sh.size;
+    const c = center.clone().applyMatrix4(cam.matrixWorldInverse);
+    const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
+    cam.position.addScaledVector(right, c.x - Math.round(c.x / texel) * texel);
+    cam.position.addScaledVector(up, c.y - Math.round(c.y / texel) * texel);
+    cam.updateMatrixWorld();
+    const prevTarget = renderer.getRenderTarget();
+    scene.overrideMaterial = sh.material;
+    renderer.setRenderTarget(sh.target);
+    renderer.clear(true, true, false);
+    renderer.render(scene, cam);
+    scene.overrideMaterial = null;
+    renderer.setRenderTarget(prevTarget);
+    this.shared.uShadowMatrix.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    this.shared.uShadowOn.value = strength;
+  }
+
   makeMaterial({ alphaTest = 0.5, opacity = 1, transparent = false, entity = false, water = false, side = THREE.FrontSide } = {}) {
     const defines = {};
     if (this.bank.safe) defines.SAFE = '';
+    if (this.shadow) defines.SHADOWS = '';
     if (water) defines.WATER = '';
     return new THREE.ShaderMaterial({
       vertexShader: VERT,
@@ -291,6 +397,7 @@ export class ChunkRenderer {
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
     mesh.renderOrder = order;
+    if (material === this.solidMat) mesh.layers.enable(SHADOW_LAYER);
     this.group.add(mesh);
     return mesh;
   }

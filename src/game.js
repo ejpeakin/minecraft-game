@@ -30,7 +30,7 @@ const LOW_MEMORY = (navigator.deviceMemory ?? 8) <= 4;
 const DEFAULT_SETTINGS = {
   playerName: `Player${Math.floor(100 + Math.random() * 900)}`, serverUrl: '',
   renderDistance: LOW_MEMORY ? 4 : 6, safeGraphics: false, fancyGraphics: true, fov: 70, sensitivity: 1, brightness: 0.5, volume: 0.7, music: 0.4,
-  invertY: false, clouds: true, bobbing: true, peaceful: false, keepInventory: false,
+  invertY: false, clouds: true, bobbing: true, peaceful: false, keepInventory: false, shadows: true,
 };
 
 function storageGet(key) {
@@ -568,9 +568,11 @@ export class Game {
 
   loop(now) {
     requestAnimationFrame((t) => this.loop(t));
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const raw = (now - this.last) / 1000;
+    const dt = Math.min(0.05, raw);
     this.last = now;
     this.fps += (1 / Math.max(dt, 1e-3) - this.fps) * 0.05;
+    this.rawFps = (this.rawFps ?? 60) + (1 / Math.max(raw, 1e-3) - (this.rawFps ?? 60)) * 0.05;
     try {
       if (this.viewSize && (this.canvas.clientWidth !== this.viewSize[0] || this.canvas.clientHeight !== this.viewSize[1]) && this.canvas.clientWidth > 0) this.resize();
       if (this.world && this.state !== 'loading') {
@@ -664,6 +666,7 @@ export class Game {
     shared.uFlicker.value = 1;
     this.spawnLeaves(dt, world, { x: pan.x, y: pan.y - 20, z: pan.z });
     this.particles.update(dt, (x, y, z) => SOLID[world.getBlock(x, y, z)] && BLOCKS[world.getBlock(x, y, z)].shape === 'cube');
+    this.renderShadows(new THREE.Vector3(pan.x - Math.sin(pan.yaw) * 20, pan.y - 18, pan.z - Math.cos(pan.yaw) * 20));
     this.renderer.render(this.scene, cam);
   }
 
@@ -865,6 +868,15 @@ export class Game {
     this.ui.updateHud(dt);
     if (this.ui.screen === 'map' && Math.floor(world.clock * 2) !== Math.floor((world.clock - dt) * 2)) this.ui.drawMap();
     this.audio.updateMusic(dt);
+    if (playing && this.settings.shadows && this.chunkRenderer.shadow) {
+      this.slowTime = this.rawFps < 22 ? (this.slowTime ?? 0) + dt : 0;
+      if (this.slowTime > 10) {
+        this.slowTime = 0;
+        this.settings.shadows = false;
+        this.applySettings();
+        this.ui.toast('Shadows turned off to keep the game smooth. Turn them back on in Options.', 5);
+      }
+    }
     this.saveTimer += dt;
     if (this.saveTimer > 30 && playing) {
       this.saveTimer = 0;
@@ -965,8 +977,22 @@ export class Game {
     }
   }
 
+  // Sun shadows, fading out at dawn, dusk, in rain and underwater.
+  renderShadows(center) {
+    if (!this.chunkRenderer.shadow) return;
+    const sun = this.sky.sunDir;
+    const rain = this.world ? this.weather.level : 0;
+    const on = this.settings.shadows && !this.player.headInWater;
+    const strength = on ? Math.min(1, Math.max(0, (sun.y - 0.04) / 0.18)) * (1 - rain) : 0;
+    this.chunkRenderer.renderShadows(this.renderer, this.scene, center, sun, strength);
+  }
+
   render() {
     this.renderer.info.reset();
+    // Shadows cover the area ahead of the camera best.
+    const cam = this.camera.position;
+    const yaw = this.player.yaw;
+    this.renderShadows(new THREE.Vector3(cam.x - Math.sin(yaw) * 12, cam.y, cam.z - Math.cos(yaw) * 12));
     this.renderer.render(this.scene, this.camera);
     if (!this.hudHidden && !this.player.dead) this.viewModel.render(this.renderer, this.camera.aspect);
   }
