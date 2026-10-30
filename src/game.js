@@ -4,7 +4,7 @@
 import * as THREE from './three.js';
 import { TextureBank } from './textures.js';
 import { World } from './world.js';
-import { CHUNK, HEIGHT, SEA } from './worldgen.js';
+import { CHUNK, HEIGHT, SEA, GEN_VERSION } from './worldgen.js';
 import { ChunkRenderer, SelectionBox, CrackOverlay, Particles } from './renderer.js';
 import { Sky } from './sky.js';
 import { Player } from './player.js';
@@ -212,20 +212,20 @@ export class Game {
   createWorld(name, seedText, mode) {
     const seed = seedText ? seedFromString(seedText) : Math.floor(Math.random() * 2 ** 31);
     const id = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
-    this.saves.create({ id, name, seed, mode, created: Date.now(), lastPlayed: Date.now() });
+    this.saves.create({ id, name, seed, mode, gen: GEN_VERSION, created: Date.now(), lastPlayed: Date.now() });
     this.openWorld(id);
   }
 
   async openWorld(id) {
     const meta = this.saves.meta(id);
     if (!meta) return;
-    await this.startWorld({ id, name: meta.name, seed: meta.seed, mode: meta.mode, save: this.saves.load(id) });
+    await this.startWorld({ id, name: meta.name, seed: meta.seed, mode: meta.mode, gen: meta.gen ?? 1, save: this.saves.load(id) });
   }
 
   // Load and enter a world. id is null for a friend's multiplayer world, which isn't
   // saved here (the host's computer keeps it); edits are the room's changes so far.
-  async startWorld({ id, name, seed, mode, save = null, edits = [], players = [] }) {
-    const meta = { name, seed, mode };
+  async startWorld({ id, name, seed, mode, gen = 1, save = null, edits = [], players = [] }) {
+    const meta = { name, seed, mode, gen };
     this.stopPanorama();
     this.audio.resume();
     this.cancelSleep();
@@ -236,7 +236,7 @@ export class Game {
     this.ui.setLoading(0, 'Building terrain');
     await new Promise((r) => setTimeout(r, 30));
 
-    this.world = new World(meta.seed, save?.world ?? null);
+    this.world = new World(meta.seed, save?.world ?? null, meta.gen);
     this.world.markers = save?.world?.markers ?? [];
     this.world.addEdits(edits);
     this.world.onFall = (x, y, z, blockId) => this.entities.add(new FallingBlock(this, x, y, z, blockId));
@@ -356,7 +356,7 @@ export class Game {
     await this.net.connect();
     await this.openWorld(id);
     const data = this.world.serialize();
-    const code = await this.net.host({ seed: meta.seed, mode: meta.mode, name: meta.name, time: this.world.time, spawn: this.worldSpawn, mods: data.mods });
+    const code = await this.net.host({ seed: meta.seed, gen: this.world.genVersion, mode: meta.mode, name: meta.name, time: this.world.time, spawn: this.worldSpawn, mods: data.mods });
     this.ui.chatLine(`Hosting "${meta.name}". Friends can join with code ${code}.`, 'system');
     this.ui.toast(`Your game code is ${code}. Press T to chat.`, 8);
     return code;
@@ -367,7 +367,7 @@ export class Game {
     const welcome = await this.net.join(code);
     const w = welcome.world;
     await this.startWorld({
-      id: null, name: `${w.name} (${welcome.code})`, seed: w.seed, mode: w.mode,
+      id: null, name: `${w.name} (${welcome.code})`, seed: w.seed, gen: w.gen ?? 1, mode: w.mode,
       save: { world: { mods: w.mods, time: w.time }, spawn: w.spawn ?? null },
       edits: welcome.edits, players: welcome.players,
     });
@@ -461,6 +461,7 @@ export class Game {
       fall: 'fell from a high place', lava: 'tried to swim in lava', drown: 'drowned', zombie: 'was slain by a Zombie',
       explosion: 'blew up', cactus: 'was pricked to death', starve: 'starved to death', void: 'fell out of the world',
       arrow: 'was shot by a Skeleton', skeleton: 'was shot by a Skeleton', spider: 'was slain by a Spider',
+      freeze: 'froze to death', dripstone: 'was impaled on a stalagmite', goat: 'was rammed by a Goat', wolf: 'was slain by a Wolf',
     };
     document.getElementById('death-cause').textContent = `You ${msgs[cause] ?? 'died'}.`;
     this.state = 'dead';
@@ -902,7 +903,8 @@ export class Game {
     if (p.flying && p.sprinting) fov *= 1.05;
     if (p.headInWater) fov *= 0.92;
     if (p.drawing > 0) fov *= 1 - Math.min(1, p.drawing) * 0.15; // a drawn bow zooms in
-    cam.fov += (fov - cam.fov) * Math.min(1, dt * 10);
+    if (p.scoping) fov = 10;
+    cam.fov += (fov - cam.fov) * Math.min(1, dt * (p.scoping ? 30 : 10));
     cam.updateProjectionMatrix();
   }
 
@@ -994,7 +996,7 @@ export class Game {
     const yaw = this.player.yaw;
     this.renderShadows(new THREE.Vector3(cam.x - Math.sin(yaw) * 12, cam.y, cam.z - Math.cos(yaw) * 12));
     this.renderer.render(this.scene, this.camera);
-    if (!this.hudHidden && !this.player.dead) this.viewModel.render(this.renderer, this.camera.aspect);
+    if (!this.hudHidden && !this.player.dead && !this.player.scoping) this.viewModel.render(this.renderer, this.camera.aspect);
   }
 }
 

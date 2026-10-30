@@ -16,7 +16,7 @@ const SNEAK = 1.31;
 const FLY = 10.9;
 
 // Damage that armor protects against (falls, drowning, starving and the void bypass it).
-const ARMOR_STOPS = new Set(['zombie', 'skeleton', 'spider', 'arrow', 'explosion', 'player', 'cactus', 'lava']);
+const ARMOR_STOPS = new Set(['zombie', 'skeleton', 'spider', 'arrow', 'explosion', 'player', 'cactus', 'lava', 'goat', 'wolf']);
 
 export class Player {
   constructor(game) {
@@ -128,7 +128,7 @@ export class Player {
   }
 
   look(input) {
-    const s = this.game.settings.sensitivity * 0.0022;
+    const s = this.game.settings.sensitivity * 0.0022 * (this.scoping ? 0.15 : 1);
     this.yaw -= input.dx * s;
     this.pitch -= input.dy * s * (this.game.settings.invertY ? -1 : 1);
     this.pitch = Math.max(-Math.PI / 2 + 0.001, Math.min(Math.PI / 2 - 0.001, this.pitch));
@@ -175,11 +175,16 @@ export class Player {
     const headId = world.getBlock(Math.floor(this.x), Math.floor(this.y + this.eyeHeight), Math.floor(this.z));
     this.headInWater = FLUID[headId] === 1;
     this.headInLava = FLUID[headId] === 2;
+    // Powder snow: you sink into it unless you wear leather boots, which walk on top.
+    this.powderWalk = this.inventory.armor[3]?.id === 'leather_boots' && !this.sneaking;
+    this.inPowder = !this.flying && touchesBlock(world, { x: this.x, y: this.y + 0.05, z: this.z, w: this.w - 0.1, h: 1.5 }, (id) => BLOCKS[id].powder);
+    this.headInPowder = BLOCKS[headId].powder;
 
     let speed = this.flying ? (this.sprinting ? FLY * 2 : FLY) : this.sneaking ? SNEAK : this.sprinting ? SPRINT : WALK;
     if (this.inWater && !this.flying) speed = this.sprinting ? 3.2 : 2.2;
     if (this.inLava && !this.flying) speed = 1.2;
-    if (this.eating > 0 || this.drawing > 0) speed *= 0.35;
+    if (this.eating > 0 || this.drawing > 0 || this.scoping) speed *= 0.35;
+    if (this.inPowder && !this.powderWalk) speed *= 0.35;
     const len = Math.hypot(fwd, strafe) || 1;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wx = ((-sin * fwd + cos * strafe) / len) * speed;
@@ -203,6 +208,12 @@ export class Player {
       this.vy = Math.max(this.vy, -2.5);
       this.vy *= Math.pow(0.4, dt);
       if (key('Space') && this.collidedH) this.vy = 5.5;
+      this.fallDistance = 0;
+    } else if (this.inPowder && !this.powderWalk) {
+      // Sink slowly; jumping climbs back out a little at a time.
+      this.vy -= GRAVITY * 0.3 * dt;
+      this.vy = Math.max(this.vy, -1.2);
+      if (key('Space')) this.vy = 1.6;
       this.fallDistance = 0;
     } else if (this.onLadder) {
       // Climb when pushing into the ladder or holding jump, hold on while sneaking,
@@ -245,13 +256,15 @@ export class Player {
     else if (this.inWater) this.exhaustion += moved * 0.01;
 
     // Fall damage.
-    if (this.flying || this.inWater || this.inLava || this.onLadder) this.fallDistance = 0;
+    if (this.flying || this.inWater || this.inLava || this.onLadder || this.inPowder) this.fallDistance = 0;
     else if (dyMoved < 0 && !this.onGround) this.fallDistance -= dyMoved;
     if (this.onGround && !wasGround) {
       if (this.fallDistance > 3.5 && this.mode === 'survival') {
         const bid = world.getBlock(Math.floor(this.x), Math.floor(this.y - 0.2), Math.floor(this.z));
         const soft = bid === B.straw_bed || BLOCKS[bid].shape === 'cushion' ? 0.5 : 1;
-        this.damage(Math.ceil((this.fallDistance - 3) * soft), { cause: 'fall' });
+        // Landing on a dripstone spike hurts twice as much.
+        const spike = BLOCKS[world.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z))].stands === 'drip' ? 2 : 1;
+        this.damage(Math.ceil((this.fallDistance - 3) * soft * spike), { cause: spike > 1 ? 'dripstone' : 'fall' });
         this.game.audio.block('stone', 'step');
       }
       this.fallDistance = 0;
@@ -289,6 +302,16 @@ export class Player {
       if (this.cactusTimer <= 0) {
         this.cactusTimer = 0.5;
         this.damage(1, { cause: 'cactus' });
+      }
+    }
+    // Freezing in powder snow (leather boots keep you warm).
+    const freezing = survival && this.inPowder && !this.powderWalk && this.inventory.armor[3]?.id !== 'leather_boots';
+    this.freeze = Math.max(0, Math.min(7, (this.freeze ?? 0) + (freezing ? dt : -dt * 2)));
+    if (this.freeze >= 7) {
+      this.freezeTimer = (this.freezeTimer ?? 0) - dt;
+      if (this.freezeTimer <= 0) {
+        this.freezeTimer = 2;
+        this.damage(1, { cause: 'freeze' });
       }
     }
     if (!survival) {
@@ -439,6 +462,7 @@ export class Player {
     if (this.targetMob && input.clicked[0] && this.attackCooldown <= 0) {
       this.attackCooldown = 0.3;
       const dmg = attackDamage(this.held) * (this.vy < -1 && !this.onGround ? 1.5 : 1);
+      this.lastHitMob = this.targetMob; // tame wolves join in
       if (this.targetMob.damage(dmg, this.x, this.z, this.sprinting ? 1.6 : 1)) {
         this.exhaustion += 0.1;
         if (toolOf(this.held)) this.inventory.damageHeld(toolOf(this.held).type === 'sword' ? 1 : 2);
@@ -450,6 +474,8 @@ export class Player {
       this.mining = null;
     }
 
+    // Right: a spyglass zooms in while held.
+    this.scoping = !!(input.mouse[2] && ITEMS[this.held?.id]?.spyglass);
     // Right: use. A bow draws while held and shoots on release.
     const bow = ITEMS[this.held?.id]?.bow && (this.mode === 'creative' || this.inventory.count('arrow') > 0);
     if (input.mouse[2] && bow) {
@@ -460,7 +486,10 @@ export class Player {
       this.drawing = 0;
     } else if (input.mouse[2]) {
       const food = ITEMS[this.held?.id]?.food;
-      if (food && (this.food < 20 || this.mode === 'creative' || food.always) && !(this.target && this.canInteract(this.target) && !this.sneaking)) {
+      const hangsHere = ITEMS[this.held?.id]?.hangPlant && this.target?.ny === -1;
+      if (this.scoping) {
+        this.eating = 0;
+      } else if (food && !hangsHere && (this.food < 20 || this.mode === 'creative' || food.always) && !(this.target && this.canInteract(this.target) && !this.sneaking)) {
         this.eat(dt, food);
       } else {
         this.eating = 0;
@@ -481,6 +510,8 @@ export class Player {
     if (!b.interact) return false;
     if (b.interact === 'tnt') return ITEMS[this.held?.id]?.igniter;
     if (b.interact === 'campfire') return !!SMELTING[this.held?.id] && !!ITEMS[this.held.id].food;
+    if (b.interact === 'candle') return b.candle === 'lit' || !!ITEMS[this.held?.id]?.igniter;
+    if (b.interact === 'scrape') return toolOf(this.held)?.type === 'axe';
     return true;
   }
 
@@ -597,6 +628,15 @@ export class Player {
     }
     if (t && item?.fertilizer) return this.fertilize(t);
     if (t && item?.tool?.type === 'hoe') return this.till(t);
+    if (t && item?.hangPlant) {
+      // Glow berries plant a cave vine under a ceiling (or under more vine).
+      const below = world.getBlock(t.x, t.y - 1, t.z);
+      if (t.ny !== -1 || !(SOLID[t.id] || BLOCKS[t.id].hangs === 'vine') || below !== 0) return false;
+      world.setBlock(t.x, t.y - 1, t.z, B[item.hangPlant]);
+      game.audio.block('grass', 'place', { x: t.x, y: t.y - 1, z: t.z }, this);
+      if (this.mode === 'survival') this.inventory.consumeHeld(1);
+      return true;
+    }
     if (t && item?.plants) {
       // Seeds go on top of farmland.
       const above = world.getBlock(t.x, t.y + 1, t.z);
@@ -662,6 +702,12 @@ export class Player {
       } else id += toward;
     }
     const below = world.getBlock(px, py - 1, pz);
+    const above = world.getBlock(px, py + 1, pz);
+    // Dripstone points down from a ceiling and up from a floor.
+    if (b.pointed && t.ny === -1) id = B.pointed_dripstone_down;
+    if (BLOCKS[id].hangs && !(SOLID[above] || BLOCKS[above].hangs === BLOCKS[id].hangs)) return false;
+    if (BLOCKS[id].stands && !(SOLID[below] || BLOCKS[below].stands === BLOCKS[id].stands)) return false;
+    if (b.candle && !SOLID[below]) return false;
     if (b.plant && !canPlantOn(id, below)) return false;
     if (id === B.cactus && below !== B.sand && below !== B.cactus) return false;
     if (id === B.torch && !SOLID[below] && ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => OPAQUE[world.getBlock(px + dx, py, pz + dz)])) return false;
@@ -735,6 +781,22 @@ export class Player {
       done = true;
     } else if (b.sapling) {
       if (Math.random() < 0.45) world.growSapling(t.x, t.y, t.z, b.sapling);
+      done = true;
+    } else if (t.id === B.moss_block && world.getBlock(t.x, t.y + 1, t.z) === 0) {
+      // Moss spreads over nearby stone and dirt and sprouts carpets and azaleas.
+      for (let i = 0; i < 24; i++) {
+        const x = t.x + Math.round((Math.random() - 0.5) * 6), z = t.z + Math.round((Math.random() - 0.5) * 6);
+        for (const y of [t.y, t.y + 1, t.y - 1]) {
+          const ground = world.getBlock(x, y, z);
+          if (![B.stone, B.dirt, B.grass, B.deepslate, B.tuff, B.granite, B.diorite, B.andesite, B.moss_block].includes(ground) || world.getBlock(x, y + 1, z) !== 0) continue;
+          world.setBlock(x, y, z, B.moss_block);
+          const r = Math.random();
+          if (r < 0.25) world.setBlock(x, y + 1, z, B.moss_carpet);
+          else if (r < 0.3) world.setBlock(x, y + 1, z, r < 0.285 ? B.azalea : B.flowering_azalea);
+          else if (r < 0.45) world.setBlock(x, y + 1, z, B.tall_grass);
+          break;
+        }
+      }
       done = true;
     } else if (t.id === B.grass && world.getBlock(t.x, t.y + 1, t.z) === 0) {
       for (let i = 0; i < 12; i++) {
@@ -840,6 +902,28 @@ export class Player {
         return true;
       case 'bed':
         game.trySleep(t.x, t.y, t.z);
+        return true;
+      case 'candle':
+        if (b.candle === 'lit') {
+          world.setBlock(t.x, t.y, t.z, b.unlitId);
+          game.audio.block('cloth', 'step', t, this);
+        } else {
+          world.setBlock(t.x, t.y, t.z, b.litId);
+          game.audio.block('stone', 'hit', t, this);
+          if (this.mode === 'survival') this.inventory.damageHeld(1);
+        }
+        return true;
+      case 'berries':
+        world.setBlock(t.x, t.y, t.z, B.cave_vines);
+        game.entities.dropItem(t.x + 0.5, t.y + 0.3, t.z + 0.5, { id: 'glow_berries', count: 1 });
+        game.audio.pop();
+        return true;
+      case 'scrape':
+        // An axe scrapes the green off weathered copper, one stage at a time.
+        world.setBlock(t.x, t.y, t.z, B[b.scrapes]);
+        game.particles.burst(t.x, t.y + 0.5, t.z, [0.9, 0.95, 0.9], 8);
+        game.audio.block('metal', 'step', t, this);
+        if (this.mode === 'survival') this.inventory.damageHeld(1);
         return true;
       case 'door': {
         // Doors open both halves together; anything else opens on its own.

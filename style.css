@@ -50,6 +50,8 @@ button, input, select { font: inherit; }
 #inlava { background: rgba(255, 90, 0, 0.6); }
 #hurt { background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 0, 0, 0.55)); transition: opacity 0.05s; }
 #sleep-fade { background: #000; transition: opacity 1.2s; }
+#frost { background: radial-gradient(ellipse at center, rgba(220, 236, 255, 0.15) 30%, rgba(236, 246, 255, 0.9)); transition: opacity 0.4s; }
+#spyglass { background: radial-gradient(circle at center, transparent 0, transparent 32vmin, #000 33vmin); transition: none; }
 #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); mix-blend-mode: difference; }
 #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; }
 #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
@@ -123,6 +125,18 @@ button, input, select { font: inherit; }
 .hot-grid { grid-template-columns: repeat(9, 36px); margin-top: 8px; }
 .player-preview { width: 104px; height: 140px; background: #000; box-shadow: inset 2px 2px 0 var(--slot-lo), inset -2px -2px 0 var(--slot-hi); display: grid; place-items: center; color: #aaa; overflow: hidden; }
 .player-preview img { width: 90px; image-rendering: pixelated; }
+.player-preview .player-model { width: 100px; height: 144px; image-rendering: pixelated; }
+/* The survival inventory laid out like Minecraft's: armor, the player, then the 2x2
+   crafting grid and result, all exactly as wide as the nine inventory columns. */
+.inv-top.survival { display: block; position: relative; width: 324px; height: 144px; min-height: 0; margin-bottom: 12px; }
+.inv-top.survival .armor-grid { position: absolute; left: 0; top: 0; margin: 0; }
+.inv-top.survival .player-preview { position: absolute; left: 36px; top: 0; width: 100px; height: 144px; }
+.inv-top.survival .craft { position: absolute; left: 168px; top: 4px; display: block; width: 156px; height: 140px; }
+.inv-top.survival .craft h3 { margin: 0 0 6px; }
+.inv-top.survival .craft .arrow { position: absolute; left: 76px; top: 45px; width: 32px; }
+.inv-top.survival .craft .arrow::before { width: 18px; }
+.inv-top.survival .craft .arrow::after { left: 16px; }
+.inv-top.survival .craft .slot.big { position: absolute; left: 108px; top: 36px; width: 48px; height: 48px; }
 .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
 .tab { padding: 4px 10px; background: #a0a0a0; border: 2px solid #000; border-bottom: 0; color: var(--text-dark); cursor: pointer; pointer-events: auto; box-shadow: inset 2px 2px 0 #d8d8d8; }
 .tab.on { background: var(--panel); box-shadow: inset 2px 2px 0 #fff; }

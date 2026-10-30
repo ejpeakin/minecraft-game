@@ -5,7 +5,12 @@ import * as THREE from './three.js';
 import { BLOCKS, B, SOLID, FLUID, SHAPES, SHAPE, shapeBoxes } from './blocks.js';
 import { ITEMS, blockDrops } from './items.js';
 import { moveEntity, fluidIn, touchesBlock, raycast } from './physics.js';
-import { HEIGHT } from './worldgen.js';
+import { HEIGHT, SEA, BIOME } from './worldgen.js';
+
+const WOLF_BIOMES = new Set([BIOME.FOREST, BIOME.TAIGA]);
+const MEAT = new Set(['porkchop', 'cooked_porkchop', 'beef', 'cooked_beef', 'mutton', 'cooked_mutton', 'chicken', 'cooked_chicken', 'rotten_flesh']);
+const GOAT_BIOMES = new Set([BIOME.SNOWY_SLOPES, BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS]);
+const GOAT_GROUND = new Set([B.snow_block, B.stone, B.packed_ice, B.calcite, B.snowy_grass]);
 import { mulberry32 } from './noise.js';
 import { DYE_COLORS } from './textures.js';
 import { itemGeometry } from './renderer.js';
@@ -424,49 +429,91 @@ const eyes = (ctx, x, y, row, left, right, white = true) => {
   px(ctx, x + left, y + row, '#141414'); px(ctx, x + right, y + row, '#141414');
 };
 
-const PINK = [236, 156, 160];
-const SHEEP_SKIN = [222, 204, 188];
+const PINK = [240, 164, 166];
+const SHEEP_SKIN = [216, 186, 166];
+const WOLF = [214, 208, 200];
+// Minecraft-style mob skin: a little noise, lighter on top and darker underneath.
+const shaded = (base, amt = 0.04) => (ctx, f, x, y, w, h, r) => {
+  const k = f === 2 ? 1.06 : f === 3 ? 0.9 : 1;
+  noisyFill(ctx, x, y, w, h, [base[0] * k, base[1] * k, base[2] * k], amt, r);
+};
+// Wool: soft white with faint curls (tinted to the sheep's color in game).
+const fleece = (ctx, f, x, y, w, h, r) => {
+  noisyFill(ctx, x, y, w, h, [240, 240, 236], 0.025, r);
+  for (let i = 0; i < (w * h) / 6; i++) noisyFill(ctx, x + Math.floor(r() * w), y + Math.floor(r() * h), 1, 1, [220, 220, 214], 0.02, r);
+};
+// A wolf's coat: pale gray, darker along the back.
+const wolfCoat = (ctx, f, x, y, w, h, r) => {
+  noisyFill(ctx, x, y, w, h, f === 2 ? [176, 170, 160] : f === 3 ? [226, 222, 216] : WOLF, 0.04, r);
+  if (f !== 2 && f !== 3) noisyFill(ctx, x, y, w, Math.max(1, Math.floor(h / 3)), [184, 178, 168], 0.04, r);
+};
 const COW_BROWN = [92, 62, 42];
 const COW_WHITE = [232, 228, 220];
 const HEN_WHITE = [244, 244, 238];
 const HEN_LEG = [232, 168, 48];
+const GOAT_WHITE = [232, 228, 216];
+const SQUID = [44, 62, 98];
+const GLOW = [46, 168, 160];
+const AXOLOTL = [238, 168, 200];
+// Squid: a tall body with eight tentacles hanging from a ring underneath.
+const squidParts = (base, spot, glow) => [
+  { name: 'body', size: [10, 12, 10], at: [0, 16, 0], paint: withFront(blotched(base, spot, glow ? 10 : 4, 0.06), (c, x, y) => {
+    px(c, x + 2, y + 8, glow ? '#e8fff4' : '#d8dce8', 2, 2); px(c, x + 6, y + 8, glow ? '#e8fff4' : '#d8dce8', 2, 2);
+    px(c, x + 2, y + 9, '#101418'); px(c, x + 7, y + 9, '#101418');
+  }) },
+  ...Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * Math.PI * 2;
+    return { name: 'tentacle', size: [2, 10, 2], at: [Math.round(Math.sin(a) * 3.5), 10, Math.round(Math.cos(a) * 3.5)], off: [0, -5, 0], paint: blotched(mul3(base, 0.9), spot, glow ? 3 : 1, 0.06), tentacle: i };
+  }),
+];
+function mul3(c, f) { return [c[0] * f, c[1] * f, c[2] * f]; }
+
+// A player's arm: skin, with the shirt's short sleeve at the top.
+const sleeve = (ctx, f, x, y, w, h, r) => {
+  noisyFill(ctx, x, y, w, h, [196, 142, 106], 0.06, r);
+  if (f === 2) noisyFill(ctx, x, y, w, h, [47, 168, 176], 0.06, r);
+  else if (f !== 3) noisyFill(ctx, x, y, w, 4, [47, 168, 176], 0.06, r);
+};
 
 const MOBS = {
   pig: {
     w: 0.9, h: 0.9, health: 10, speed: 1.6, hostile: false, food: 'wheat',
     drops: (r) => [{ id: 'porkchop', count: 1 + Math.floor(r() * 3) }],
     parts: [
-      { name: 'body', size: [10, 8, 16], at: [0, 10, 0], paint: blotched(PINK, [222, 140, 146], 3, 0.06) },
-      { id: 'head', name: 'head', size: [8, 8, 8], at: [0, 12, 7], off: [0, 0, 4], paint: withFront(solid(PINK, 0.06), (c, x, y) => {
-        px(c, x, y + 2, '#d88c92', 8, 1);
-        eyes(c, x, y, 3, 2, 5);
+      { name: 'body', size: [10, 8, 16], at: [0, 10, 0], paint: shaded(PINK, 0.035) },
+      { id: 'head', name: 'head', size: [8, 8, 8], at: [0, 12, 7], off: [0, 0, 4], paint: withFront(shaded(PINK, 0.035), (c, x, y) => {
+        // Minecraft's pig: white-and-black eyes either side of the snout.
+        px(c, x, y + 3, '#f6f6f6'); px(c, x + 1, y + 3, '#101010');
+        px(c, x + 6, y + 3, '#101010'); px(c, x + 7, y + 3, '#f6f6f6');
       }) },
-      { name: 'snout', parent: 'head', size: [4, 3, 1], at: [0, 12, 7], off: [0, -1.5, 8.5], paint: withFront(solid([226, 134, 144], 0.05), (c, x, y) => {
-        px(c, x, y, '#f0a6ae', 4, 1); px(c, x + 1, y + 1, '#8c3c46'); px(c, x + 2, y + 1, '#8c3c46');
+      { name: 'snout', parent: 'head', size: [4, 3, 1], at: [0, 12, 7], off: [0, -1.5, 8.5], paint: withFront(solid([246, 178, 184], 0.03), (c, x, y) => {
+        px(c, x, y, '#f9c4c8', 4, 1);
+        px(c, x, y + 1, '#8e4a52'); px(c, x + 3, y + 1, '#8e4a52');
       }) },
-      { name: 'leg', size: [4, 6, 4], at: [-3, 6, 5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 0 },
-      { name: 'leg', size: [4, 6, 4], at: [3, 6, 5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 1 },
-      { name: 'leg', size: [4, 6, 4], at: [-3, 6, -5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 1 },
-      { name: 'leg', size: [4, 6, 4], at: [3, 6, -5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 0 },
+      { name: 'leg', size: [4, 6, 4], at: [-3, 6, 5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 0 },
+      { name: 'leg', size: [4, 6, 4], at: [3, 6, 5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 1 },
+      { name: 'leg', size: [4, 6, 4], at: [-3, 6, -5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 1 },
+      { name: 'leg', size: [4, 6, 4], at: [3, 6, -5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 0 },
     ],
   },
   sheep: {
     w: 0.9, h: 1.3, health: 8, speed: 1.5, hostile: false, food: 'wheat', wool: true,
     drops: (r, mob) => [...(mob?.sheared ? [] : [{ id: `${mob?.color ?? 'white'}_wool`, count: 1 }]), { id: 'mutton', count: 1 + Math.floor(r() * 2) }],
     parts: [
-      { id: 'leg0', name: 'leg', size: [4, 12, 4], at: [-3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 0 },
-      { id: 'leg1', name: 'leg', size: [4, 12, 4], at: [3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 1 },
-      { id: 'leg2', name: 'leg', size: [4, 12, 4], at: [-3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 1 },
-      { id: 'leg3', name: 'leg', size: [4, 12, 4], at: [3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 0 },
-      { name: 'body', size: [8, 6, 16], at: [0, 15, 0], paint: solid(SHEEP_SKIN) },
-      { id: 'head', name: 'head', size: [6, 6, 8], at: [0, 18, 7], off: [0, 1, 4], paint: withFront(solid(SHEEP_SKIN, 0.05), (c, x, y) => {
-        eyes(c, x, y, 2, 1, 4);
-        px(c, x + 2, y + 4, '#b28c82', 2, 1); px(c, x + 2, y + 5, '#8c6a62', 2, 1);
+      { id: 'leg0', name: 'leg', size: [4, 12, 4], at: [-3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 0 },
+      { id: 'leg1', name: 'leg', size: [4, 12, 4], at: [3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 1 },
+      { id: 'leg2', name: 'leg', size: [4, 12, 4], at: [-3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 1 },
+      { id: 'leg3', name: 'leg', size: [4, 12, 4], at: [3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 0 },
+      { name: 'body', size: [8, 6, 16], at: [0, 15, 0], paint: solid(SHEEP_SKIN, 0.04) },
+      // The face is tan skin; the wool cap covers the rest of the head.
+      { id: 'head', name: 'head', size: [6, 6, 8], at: [0, 18, 7], off: [0, 1, 4], paint: withFront(solid(SHEEP_SKIN, 0.04), (c, x, y) => {
+        px(c, x, y + 2, '#f2f2f2'); px(c, x + 1, y + 2, '#141414'); px(c, x + 4, y + 2, '#141414'); px(c, x + 5, y + 2, '#f2f2f2');
+        px(c, x + 2, y + 4, '#c89c90', 2, 1); px(c, x + 2, y + 5, '#a87a70', 2, 1);
       }) },
       // The fleece: shown until the sheep is sheared, tinted to the sheep's color.
-      { name: 'wool', wool: true, size: [11, 9, 19], at: [0, 15, 0], off: [0, 0.5, 0], paint: blotched([238, 238, 232], [214, 214, 208], 9, 0.04) },
-      { name: 'wool', wool: true, parent: 'head', size: [7, 6, 6], at: [0, 18, 7], off: [0, 2.5, 2.5], paint: blotched([238, 238, 232], [214, 214, 208], 9, 0.04) },
-      ...[0, 1, 2, 3].map((i) => ({ name: 'wool', wool: true, parent: `leg${i}`, size: [5, 5, 5], at: [[-3, 12, 5], [3, 12, 5], [-3, 12, -6], [3, 12, -6]][i], off: [0, -2.5, 0], paint: blotched([238, 238, 232], [214, 214, 208], 9, 0.04) })),
+      { name: 'wool', wool: true, size: [11, 9, 19], at: [0, 15, 0], off: [0, 0.5, 0], paint: fleece },
+      { name: 'wool', wool: true, parent: 'head', size: [7, 7, 7], at: [0, 18, 7], off: [0, 1, 3], paint: fleece },
+      ...[0, 1, 2, 3].map((i) => ({ name: 'wool', wool: true, parent: `leg${i}`, size: [5, 7, 5], at: [[-3, 12, 5], [3, 12, 5], [-3, 12, -6], [3, 12, -6]][i], off: [0, -3, 0], paint: fleece })),
     ],
   },
   cow: {
@@ -492,16 +539,41 @@ const MOBS = {
     w: 0.4, h: 0.7, health: 4, speed: 1.3, hostile: false, food: 'wheat_seeds',
     drops: (r) => [{ id: 'feather', count: Math.floor(r() * 3) }, { id: 'chicken', count: 1 }].filter((s) => s.count > 0),
     parts: [
-      { id: 'legL', name: 'leg', size: [1, 5, 1], at: [-1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.05), leg: 0 },
-      { id: 'legR', name: 'leg', size: [1, 5, 1], at: [1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.05), leg: 1 },
-      { name: 'foot', parent: 'legL', size: [3, 1, 3], at: [-1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.05) },
-      { name: 'foot', parent: 'legR', size: [3, 1, 3], at: [1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.05) },
-      { name: 'body', size: [6, 6, 8], at: [0, 8, 0], paint: blotched(HEN_WHITE, [226, 226, 220], 4, 0.04) },
-      { name: 'wing', size: [1, 4, 6], at: [-3.5, 11, 0], off: [0, -2, 0], paint: blotched(HEN_WHITE, [222, 222, 214], 4, 0.04), wing: 0 },
-      { name: 'wing', size: [1, 4, 6], at: [3.5, 11, 0], off: [0, -2, 0], paint: blotched(HEN_WHITE, [222, 222, 214], 4, 0.04), wing: 1 },
-      { id: 'head', name: 'head', size: [4, 6, 3], at: [0, 11, 3], off: [0, 1, 1.5], paint: withFront(solid(HEN_WHITE, 0.04), (c, x, y) => eyes(c, x, y, 1, 0, 3, false)) },
-      { name: 'beak', parent: 'head', size: [4, 2, 2], at: [0, 11, 3], off: [0, 1, 4], paint: solid([246, 186, 44], 0.05) },
-      { name: 'wattle', parent: 'head', size: [2, 2, 2], at: [0, 11, 3], off: [0, -1, 4], paint: solid([204, 32, 32], 0.05) },
+      { id: 'legL', name: 'leg', size: [1, 5, 1], at: [-1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.03), leg: 0 },
+      { id: 'legR', name: 'leg', size: [1, 5, 1], at: [1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.03), leg: 1 },
+      { name: 'foot', parent: 'legL', size: [3, 1, 3], at: [-1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.03) },
+      { name: 'foot', parent: 'legR', size: [3, 1, 3], at: [1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.03) },
+      { name: 'body', size: [6, 6, 8], at: [0, 8, 0], paint: shaded(HEN_WHITE, 0.025) },
+      { name: 'wing', size: [1, 4, 6], at: [-3.5, 11, 0], off: [0, -2, 0], paint: shaded([236, 236, 232], 0.03), wing: 0 },
+      { name: 'wing', size: [1, 4, 6], at: [3.5, 11, 0], off: [0, -2, 0], paint: shaded([236, 236, 232], 0.03), wing: 1 },
+      { id: 'head', name: 'head', size: [4, 6, 3], at: [0, 11, 3], off: [0, 1, 1.5], paint: withFront(shaded(HEN_WHITE, 0.025), (c, x, y) => {
+        px(c, x, y + 1, '#101010'); px(c, x + 3, y + 1, '#101010');
+      }) },
+      { name: 'beak', parent: 'head', size: [4, 2, 2], at: [0, 11, 3], off: [0, 1, 4], paint: shaded([250, 186, 40], 0.03) },
+      { name: 'wattle', parent: 'head', size: [2, 2, 2], at: [0, 11, 3], off: [0, -1, 4], paint: solid([214, 26, 26], 0.04) },
+    ],
+  },
+  // Wolves: wild packs in forests and taigas. Tame one with bones; it follows you, sits
+  // when you right-click it, and fights whatever you fight. Meat heals it.
+  wolf: {
+    w: 0.6, h: 0.85, health: 8, speed: 3.0, hostile: false, wolf: true, damage: 2,
+    drops: () => [],
+    parts: [
+      { id: 'legBL', name: 'leg', size: [2, 8, 2], at: [-1.5, 8, -4], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 0, hind: true },
+      { id: 'legBR', name: 'leg', size: [2, 8, 2], at: [1.5, 8, -4], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 1, hind: true },
+      { name: 'leg', size: [2, 8, 2], at: [-1.5, 8, 3], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 1 },
+      { name: 'leg', size: [2, 8, 2], at: [1.5, 8, 3], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 0 },
+      { id: 'body', name: 'body', size: [6, 6, 9], at: [0, 10, -1.5], paint: wolfCoat },
+      { name: 'mane', size: [8, 7, 6], at: [0, 10.5, 3], paint: wolfCoat },
+      { name: 'collar', size: [9, 1, 7], at: [0, 13, 3], paint: solid([190, 30, 30], 0.03), collar: true },
+      { id: 'head', name: 'head', size: [6, 6, 4], at: [0, 12.5, 6], off: [0, 0, 2], paint: withFront(shaded(WOLF, 0.04), (c, x, y) => {
+        px(c, x, y + 2, '#f0f0f0'); px(c, x + 1, y + 2, '#141414'); px(c, x + 4, y + 2, '#141414'); px(c, x + 5, y + 2, '#f0f0f0');
+        px(c, x, y + 1, '#8c8478', 2, 1); px(c, x + 4, y + 1, '#8c8478', 2, 1);
+      }) },
+      { name: 'snout', parent: 'head', size: [3, 3, 4], at: [0, 12.5, 6], off: [0, -1.5, 6], paint: withFront(shaded([206, 200, 192], 0.04), (c, x, y) => px(c, x + 1, y, '#202020')) },
+      { name: 'ear', parent: 'head', size: [2, 2, 1], at: [0, 12.5, 6], off: [-2, 4, 1], paint: shaded([150, 142, 132], 0.04) },
+      { name: 'ear', parent: 'head', size: [2, 2, 1], at: [0, 12.5, 6], off: [2, 4, 1], paint: shaded([150, 142, 132], 0.04) },
+      { name: 'tail', size: [2, 8, 2], at: [0, 12, -6], off: [0, -4, 0], paint: shaded([196, 190, 182], 0.04), wolfTail: true },
     ],
   },
   // Other players in multiplayer (never spawned as a mob).
@@ -515,8 +587,8 @@ const MOBS = {
         px(c, x + 3, y + 6, '#7a4a30', 2, 1);
       }) },
       { name: 'body', size: [8, 12, 4], at: [0, 18, 0], color: [47, 168, 176] },
-      { name: 'arm', size: [4, 12, 4], at: [-6, 22, 0], off: [0, -5, 0], color: [196, 142, 106], swing: 0 },
-      { name: 'arm', size: [4, 12, 4], at: [6, 22, 0], off: [0, -5, 0], color: [196, 142, 106], swing: 1 },
+      { name: 'arm', size: [4, 12, 4], at: [-6, 22, 0], off: [0, -5, 0], paint: sleeve, swing: 0 },
+      { name: 'arm', size: [4, 12, 4], at: [6, 22, 0], off: [0, -5, 0], paint: sleeve, swing: 1 },
       { name: 'leg', size: [4, 12, 4], at: [-2, 12, 0], off: [0, -6, 0], color: [58, 63, 156], leg: 0 },
       { name: 'leg', size: [4, 12, 4], at: [2, 12, 0], off: [0, -6, 0], color: [58, 63, 156], leg: 1 },
     ],
@@ -631,6 +703,13 @@ function randomSheepColor() {
   for (const [c, p] of SHEEP_COLORS) if ((r -= p) < 0) return c;
   return 'white';
 }
+// Axolotl colors (lucy, wild, gold, cyan, and the rare blue) as tints of the pink skin.
+const AXOLOTL_TINTS = { lucy: [1, 1, 1], wild: [0.62, 0.46, 0.4], gold: [1.06, 0.86, 0.42], cyan: [0.74, 0.96, 1.04], blue: [0.44, 0.52, 1.12] };
+function randomAxolotl() {
+  if (Math.random() < 1 / 1200) return 'blue';
+  return ['lucy', 'wild', 'gold', 'cyan'][Math.floor(Math.random() * 4)];
+}
+
 // Wool tint: the dye color relative to white wool.
 function woolTint(color) {
   const c = DYE_COLORS[color] ?? DYE_COLORS.white;
@@ -649,7 +728,15 @@ export class Mob extends Entity {
     this.health = opts.health ?? def.health;
     this.baby = baby;
     this.growTime = opts.growTime ?? (baby ? 240 : 0);
-    this.color = kind === 'sheep' ? opts.color ?? randomSheepColor() : null;
+    this.color = kind === 'sheep' ? opts.color ?? randomSheepColor() : kind === 'axolotl' ? opts.color ?? randomAxolotl() : null;
+    this.tamed = !!opts.tamed;
+    this.sitting = !!opts.sitting;
+    this.wolfTarget = null;
+    this.ramTimer = 20 + Math.random() * 40;
+    this.ram = 0; // > 0 while a goat lowers its head and charges
+    this.swimGoal = null;
+    this.swimTime = 0;
+    this.dryTime = 0;
     this.sheared = !!opts.sheared;
     this.loveTime = 0;
     this.breedCooldown = opts.breedCooldown ?? 0;
@@ -692,6 +779,7 @@ export class Mob extends Entity {
     return {
       kind: this.kind, x: +this.x.toFixed(2), y: +this.y.toFixed(2), z: +this.z.toFixed(2), yaw: +this.yaw.toFixed(2), health: this.health,
       baby: this.baby, growTime: Math.round(this.growTime), color: this.color, sheared: this.sheared, breedCooldown: Math.round(this.breedCooldown),
+      tamed: this.tamed || undefined, sitting: this.sitting || undefined,
     };
   }
 
@@ -702,7 +790,7 @@ export class Mob extends Entity {
     const id = stack?.id;
     const survival = player.mode === 'survival';
     const use = () => { if (survival) player.inventory.consumeHeld(1); };
-    if (this.kind === 'cow' && id === 'bucket' && !this.baby) {
+    if ((this.kind === 'cow' || this.kind === 'goat') && id === 'bucket' && !this.baby) {
       player.exchangeHeld({ id: 'milk_bucket', count: 1 });
       game.audio.splash(this, player);
       return true;
@@ -713,6 +801,33 @@ export class Mob extends Entity {
       for (let i = 0; i < n; i++) game.entities.dropItem(this.x, this.y + this.h * 0.8, this.z, { id: `${this.color}_wool`, count: 1 });
       if (survival && player.inventory.damageHeld(1)) game.audio.block('glass', 'break');
       game.audio.block('cloth', 'break', this, player);
+      return true;
+    }
+    if (this.def.wolf) {
+      // Bones tame a wild wolf (one try in three); a tame one eats meat to heal, and
+      // otherwise sits or stands up.
+      if (!this.tamed && id === 'bone' && this.angry <= 0) {
+        use();
+        if (Math.random() < 1 / 3) {
+          this.tamed = true;
+          this.sitting = true;
+          this.health = 20;
+          this.hearts(7);
+          game.ui.toast('Tamed! Your wolf follows you. Right-click it to make it sit or stand.');
+        } else {
+          game.particles.burst(this.x - 0.5, this.y + 0.6, this.z - 0.5, [0.45, 0.45, 0.45], 6);
+        }
+        return true;
+      }
+      if (!this.tamed) return false;
+      if (MEAT.has(id) && this.health < 20) {
+        this.health = Math.min(20, this.health + ITEMS[id].food.hunger);
+        use();
+        this.hearts(2);
+        return true;
+      }
+      this.sitting = !this.sitting;
+      this.wolfTarget = null;
       return true;
     }
     const dye = ITEMS[id]?.dye;
@@ -793,8 +908,12 @@ export class Mob extends Entity {
     this.vx = (dx / d) * 6 * knock;
     this.vz = (dz / d) * 6 * knock;
     this.vy = 5 * Math.min(1, knock);
-    this.fleeTime = this.hostile ? 0 : 5;
+    this.fleeTime = this.hostile || this.def.wolf ? 0 : 5;
     if (this.hostile) this.angry = 15; // a spider you hit stays angry even in daylight
+    if (this.def.wolf && !this.tamed) {
+      // Hit one wild wolf and the whole pack turns on you.
+      for (const m of this.game.entities.mobs) if (m.def.wolf && !m.tamed && this.distTo(m) < 16) m.angry = 30;
+    }
     this.game.audio.mob(this.kind, 'hurt', this, this.game.player);
     if (this.health <= 0) this.deathTime = 0.0001;
     return true;
@@ -822,6 +941,10 @@ export class Mob extends Entity {
       return;
     }
 
+    if (this.def.aquatic && (this.inWater || this.kind !== 'axolotl')) {
+      this.swim(dt);
+      return;
+    }
     let moveX = 0, moveZ = 0, speed = this.def.speed;
     this.angry = Math.max(0, this.angry - dt);
     let canTarget = this.hostile && !player.dead && player.mode === 'survival';
@@ -830,7 +953,10 @@ export class Mob extends Entity {
       if (game.sky.daylight > 0.6 && l.sky >= 12) canTarget = false;
     }
     const pd = this.distTo(player);
-    if (canTarget && pd < 18) {
+    const wolf = this.def.wolf ? this.wolfMind(dt, player, pd) : null;
+    if (wolf) {
+      moveX = wolf.x; moveZ = wolf.z; speed = wolf.speed;
+    } else if (canTarget && pd < 18) {
       const dx = player.x - this.x;
       const dz = player.z - this.z;
       this.targetYaw = Math.atan2(dx, dz);
@@ -876,6 +1002,7 @@ export class Mob extends Entity {
       if (this.def.damage && pd < 1.6 && Math.abs(player.y - this.y) < 1.6 && this.attackCooldown <= 0) {
         this.attackCooldown = 1;
         player.damage(this.def.damage, { x: this.x, z: this.z, cause: this.kind });
+        player.lastAttackerMob = this;
       }
     } else {
       if (this.def.explodes) this.fuse = Math.max(0, this.fuse - dt);
@@ -912,7 +1039,24 @@ export class Mob extends Entity {
           game.audio.pop();
         }
       }
-      if (this.grazeTime > 0) {
+      if (this.def.leaps) this.goatMind(dt, player, pd);
+      if (this.ram > 0) {
+        // Charging: head down, straight at where the player stood.
+        this.ram -= dt;
+        const [tx, tz] = this.ramAt;
+        const dx = tx - this.x, dz = tz - this.z;
+        const d = Math.hypot(dx, dz) || 1;
+        this.targetYaw = Math.atan2(dx, dz);
+        if (this.ram < 1.2) { moveX = dx / d; moveZ = dz / d; speed = 6.5; }
+        if (this.ram < 1.2 && pd < 1.5 && !player.dead) {
+          this.ram = 0;
+          player.damage(2, { x: this.x, z: this.z, cause: 'goat' });
+          player.vx += (dx / d) * 9;
+          player.vz += (dz / d) * 9;
+          player.vy = Math.max(player.vy, 6);
+        }
+        if (d < 0.6) this.ram = 0;
+      } else if (this.grazeTime > 0) {
         this.moving = false;
       } else if (goal && this.fleeTime <= 0) {
         const dx = goal.x - this.x, dz = goal.z - this.z;
@@ -955,7 +1099,7 @@ export class Mob extends Entity {
       this.vx += (wantX - this.vx) * Math.min(1, accel * dt);
       this.vz += (wantZ - this.vz) * Math.min(1, accel * dt);
     }
-    if ((moveX || moveZ) && this.collidedH && this.onGround) this.vy = 8.6;
+    if ((moveX || moveZ) && this.collidedH && this.onGround) this.vy = this.def.leaps ? 11 : 8.6;
     // Spiders walk up walls.
     if (this.def.climbs && (moveX || moveZ) && this.collidedH) this.vy = Math.max(this.vy, 3.2);
     if (this.inWater) this.vy = Math.max(this.vy, 1.6);
@@ -982,6 +1126,130 @@ export class Mob extends Entity {
     }
     const sp = Math.hypot(this.vx, this.vz);
     this.syncMesh(dt, sp);
+  }
+
+  // Wolves: an angry wild one chases the player; a tame one fights whatever its owner
+  // fights (or whatever attacks them), follows, or sits. Returns the movement, or null
+  // for a calm wild wolf, which wanders like any animal.
+  wolfMind(dt, player, pd) {
+    let target = null;
+    if (this.tamed) {
+      const t = this.wolfTarget;
+      if (t && (t.dead || t.deathTime > 0 || this.distTo(t) > 20)) this.wolfTarget = null;
+      if (!this.wolfTarget && !this.sitting) {
+        for (const m of [player.lastHitMob, player.lastAttackerMob]) {
+          if (m && m !== this && !m.dead && m.deathTime <= 0 && !(m.def.wolf && m.tamed) && this.distTo(m) < 16) { this.wolfTarget = m; break; }
+        }
+      }
+      target = this.sitting ? null : this.wolfTarget;
+    } else if (this.angry > 0 && !player.dead && player.mode === 'survival' && pd < 24) {
+      target = player;
+    } else {
+      return null;
+    }
+    if (target) {
+      const dx = target.x - this.x, dz = target.z - this.z;
+      const d = Math.hypot(dx, dz) || 1;
+      this.targetYaw = Math.atan2(dx, dz);
+      if (d < 1.4 && Math.abs(target.y - this.y) < 1.6 && this.attackCooldown <= 0) {
+        this.attackCooldown = 1;
+        if (target === player) player.damage(this.def.damage, { x: this.x, z: this.z, cause: 'wolf' });
+        else if (target.damage(4, this.x, this.z)) this.game.audio.mob('wolf', 'idle', this, player);
+      }
+      return d > 0.9 ? { x: dx / d, z: dz / d, speed: this.def.speed * 1.3 } : { x: 0, z: 0, speed: 0 };
+    }
+    if (this.sitting) return { x: 0, z: 0, speed: 0 };
+    // Follow the owner; catch up by teleporting when left far behind.
+    if (pd > 14 && !player.dead) {
+      const world = this.game.world;
+      for (let k = 0; k < 8; k++) {
+        const x = Math.floor(player.x + (Math.random() - 0.5) * 4), z = Math.floor(player.z + (Math.random() - 0.5) * 4);
+        const y = Math.floor(player.y);
+        if (SOLID[world.getBlock(x, y - 1, z)] && !SOLID[world.getBlock(x, y, z)] && !SOLID[world.getBlock(x, y + 1, z)]) {
+          this.x = x + 0.5; this.y = y; this.z = z + 0.5; this.vx = this.vy = this.vz = 0;
+          break;
+        }
+      }
+    }
+    if (pd > 3.5) {
+      const dx = player.x - this.x, dz = player.z - this.z;
+      const d = Math.hypot(dx, dz) || 1;
+      this.targetYaw = Math.atan2(dx, dz);
+      return { x: dx / d, z: dz / d, speed: this.def.speed * (pd > 7 ? 1.2 : 0.8) };
+    }
+    return { x: 0, z: 0, speed: 0 };
+  }
+
+  // Goats leap now and then, and every so often pick a player to ram.
+  goatMind(dt, player, pd) {
+    if (this.onGround && this.moving && Math.random() < dt / 8) {
+      this.vy = 11;
+      this.vx += Math.sin(this.yaw) * 3;
+      this.vz += Math.cos(this.yaw) * 3;
+    }
+    this.ramTimer -= dt;
+    if (this.ramTimer <= 0 && this.ram <= 0) {
+      this.ramTimer = 30 + Math.random() * 60;
+      if (!this.baby && pd > 3 && pd < 12 && !player.dead && player.mode === 'survival' && this.canSee(player)) {
+        this.ram = 2.2; // a second of lowering the head, then the charge
+        this.ramAt = [player.x, player.z];
+        this.game.audio.mob('goat', 'idle', this, player);
+      }
+    }
+  }
+
+  // Squid, glow squid and axolotls in water: drift toward a spot somewhere in the water
+  // nearby, and flee when hit. Squid out of water flop about and dry out.
+  swim(dt) {
+    const game = this.game;
+    const world = game.world;
+    const player = game.player;
+    const water = (x, y, z) => FLUID[world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))] === 1;
+    this.swimTime -= dt;
+    this.fleeTime -= dt;
+    if (this.inWater) {
+      this.dryTime = 0;
+      if (this.swimTime <= 0 || !this.swimGoal) {
+        this.swimTime = 2 + Math.random() * 4;
+        this.swimGoal = null;
+        for (let k = 0; k < 8 && !this.swimGoal; k++) {
+          let tx = this.x + (Math.random() - 0.5) * 12, ty = this.y + (Math.random() - 0.5) * 5, tz = this.z + (Math.random() - 0.5) * 12;
+          if (this.fleeTime > 0) { tx = this.x + (this.x - player.x) * 2; tz = this.z + (this.z - player.z) * 2; }
+          if (water(tx, ty, tz) && water(tx, ty + this.h, tz)) this.swimGoal = [tx, ty, tz];
+        }
+      }
+      let wx = 0, wy = 0.2, wz = 0;
+      if (this.swimGoal) {
+        const [tx, ty, tz] = this.swimGoal;
+        const dx = tx - this.x, dy = ty - this.y, dz = tz - this.z;
+        const d = Math.hypot(dx, dy, dz);
+        if (d < 0.6) this.swimGoal = null;
+        else {
+          const sp = this.def.speed * (this.fleeTime > 0 ? 2 : 1);
+          wx = (dx / d) * sp; wy = (dy / d) * sp; wz = (dz / d) * sp;
+          this.targetYaw = Math.atan2(dx, dz);
+        }
+      }
+      const k = Math.min(1, dt * 12);
+      this.vx += (wx - this.vx) * k;
+      this.vy += (wy - this.vy) * k;
+      this.vz += (wz - this.vz) * k;
+    } else if (this.def.dries) {
+      this.dryTime += dt;
+      if (this.onGround && Math.random() < dt * 1.5) { this.vy = 4; this.vx = (Math.random() - 0.5) * 3; this.vz = (Math.random() - 0.5) * 3; }
+      if (this.dryTime > 1) { this.dryTime = 0; this.damage(1, this.x, this.z, 0); }
+    }
+    let dyaw = this.targetYaw - this.yaw;
+    dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+    this.yaw += dyaw * Math.min(1, dt * 4);
+    this.physics(dt, this.inWater ? 0 : 28);
+    this.lookAround(dt, player, this.distTo(player));
+    this.soundTimer -= dt;
+    if (this.soundTimer <= 0) {
+      this.soundTimer = 8 + Math.random() * 12;
+      game.audio.mob(this.kind, 'idle', this, player);
+    }
+    this.syncMesh(dt, Math.hypot(this.vx, this.vz));
   }
 
   // Sheep stop now and then to eat grass, which grows their wool back.
@@ -1041,6 +1309,22 @@ export class Mob extends Entity {
         pivot.rotation.z = spec.rot[2] + Math.abs(k) * 0.25 * Math.sign(spec.rot[2]);
       }
       if (spec.wool) pivot.visible = !this.sheared;
+      if (spec.tentacle !== undefined) {
+        // Tentacles open and close as a squid swims.
+        const a = (spec.tentacle / 8) * Math.PI * 2;
+        const open = 0.25 + Math.sin(this.age * 3.2) * 0.25;
+        pivot.rotation.x = -Math.cos(a) * open;
+        pivot.rotation.z = Math.sin(a) * open;
+      }
+      if (spec.tail) pivot.rotation.y = Math.sin(this.age * (this.inWater ? 7 : 3)) * 0.35;
+      if (spec.collar) pivot.visible = this.tamed;
+      if (spec.wolfTail) {
+        // A tame wolf's tail shows its health: the higher, the healthier.
+        pivot.rotation.x = this.angry > 0 ? 1.4 : this.tamed ? 0.5 + (this.health / 20) * 0.9 : 0.6;
+        pivot.rotation.z = this.tamed && sp > 0.2 ? Math.sin(this.age * 14) * 0.3 : 0;
+      }
+      if (spec.hind) pivot.rotation.x = this.sitting ? -1.4 : pivot.rotation.x;
+      if (spec.name === 'head' && !spec.parent && this.ram > 1.2) { pivot.rotation.x = 0.7; continue; }
       if (spec.name === 'head' && !spec.parent) {
         pivot.rotation.y = this.headYaw;
         pivot.rotation.x = this.headPitch;
@@ -1048,16 +1332,18 @@ export class Mob extends Entity {
         pivot.scale.setScalar(this.baby ? 1.5 : 1);
       }
     }
-    this.mesh.position.set(this.x, this.y, this.z);
+    this.mesh.position.set(this.x, this.y - (this.sitting ? 0.2 : 0), this.z);
     this.mesh.rotation.y = this.yaw;
     const swell = this.fuse > 0 ? 1 + this.fuse * 0.12 : 1;
     const size = this.baby ? 0.5 : 1;
     this.shadow.update(this.x, this.y, this.z, size);
     this.mesh.scale.set(swell * size, (1 + (swell - 1) * 0.5) * size, swell * size);
     if (this.deathTime > 0) return;
-    const b = brightness(this.game.world, this.game.sky, this.x, this.y + this.h * 0.7, this.z);
+    const b = this.def.glows ? 1 : brightness(this.game.world, this.game.sky, this.x, this.y + this.h * 0.7, this.z);
+    const tint = this.def.tinted ? AXOLOTL_TINTS[this.color] ?? AXOLOTL_TINTS.lucy : null;
     if (this.hurtTime > 0) this.material.color.setRGB(1, 0.35, 0.35);
     else if (this.fuse > 0 && Math.floor(this.fuse * 8) % 2) this.material.color.setRGB(1, 1, 1);
+    else if (tint) this.material.color.setRGB(b * tint[0], b * tint[1], b * tint[2]);
     else this.material.color.setRGB(b, b, b);
     if (this.woolMaterial) {
       const [r, g, bl] = woolTint(this.color);
@@ -1185,13 +1471,13 @@ export class EntityManager {
       if (e.dead) continue;
       if (!this.game.world.isLoaded(e.x, e.z)) {
         if (e instanceof Mob) {
-          if (!e.hostile && e.deathTime <= 0 && this.parked.length < 400) this.parked.push(e.serialize());
+          if (!e.hostile && !e.def.aquatic && e.deathTime <= 0 && this.parked.length < 400) this.parked.push(e.serialize());
           e.dead = true;
         }
         continue;
       }
       e.update(dt);
-      if (e instanceof Mob && e.hostile && e.distTo(p) > 72) e.dead = true;
+      if (e instanceof Mob && (e.hostile || e.def.aquatic) && e.distTo(p) > 72) e.dead = true;
     }
     if (this.list.some((e) => e.dead)) {
       for (const e of this.list) if (e.dead) e.dispose();
@@ -1249,13 +1535,26 @@ export class EntityManager {
         if (spot) this.add(new Mob(game, kind, spot.x + 0.5, spot.y, spot.z + 0.5));
       }
     }
+    this.waterTimer = (this.waterTimer ?? 3) - dt;
+    if (this.waterTimer <= 0) {
+      this.waterTimer = 5;
+      if (mobs.filter((m) => m.def.aquatic).length < 6) this.spawnInWater(p);
+    }
     if (this.passiveTimer <= 0) {
       this.passiveTimer = 4;
-      const passive = mobs.filter((m) => !m.hostile).length;
+      const passive = mobs.filter((m) => !m.hostile && !m.def.aquatic).length;
       if (passive < 10 && game.sky.daylight > 0.5) {
-        const spot = this.findSpot(p, 24, 56, (x, y, z) => world.getBlock(x, y - 1, z) === B.grass && world.getLight(x, y, z).sky >= 12, true);
+        // Farm animals on grass; goats on the high mountains.
+        const spot = this.findSpot(p, 24, 56, (x, y, z) => {
+          const ground = world.getBlock(x, y - 1, z);
+          if (world.getLight(x, y, z).sky < 12) return false;
+          return ground === B.grass || (GOAT_GROUND.has(ground) && GOAT_BIOMES.has(world.gen.column(x, z).biome));
+        }, true);
         if (spot) {
-          const kind = ['pig', 'sheep', 'cow', 'chicken'][Math.floor(Math.random() * 4)];
+          const biome = world.gen.column(spot.x, spot.z).biome;
+          const goats = GOAT_BIOMES.has(biome);
+          const wolves = WOLF_BIOMES.has(biome) && Math.random() < 0.25;
+          const kind = goats ? 'goat' : wolves ? 'wolf' : ['pig', 'sheep', 'cow', 'chicken'][Math.floor(Math.random() * 4)];
           const n = 2 + Math.floor(Math.random() * 3);
           for (let i = 0; i < n; i++) {
             const sx = spot.x + Math.floor((Math.random() - 0.5) * 4);
@@ -1265,6 +1564,35 @@ export class EntityManager {
           }
         }
       }
+    }
+  }
+
+  // Squid in open water near the surface; glow squid in dark underground water, or
+  // axolotls if it's a lush cave.
+  spawnInWater(p) {
+    const game = this.game;
+    const world = game.world;
+    const water = (x, y, z) => FLUID[world.getBlock(x, y, z)] === 1;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 14 + Math.random() * 30;
+      const x = Math.floor(p.x + Math.cos(a) * r), z = Math.floor(p.z + Math.sin(a) * r);
+      if (!world.isLoaded(x, z) || !world.getChunk(Math.floor(x / 16), Math.floor(z / 16))?.light) continue;
+      const col = world.gen.column(x, z);
+      const deep = Math.random() < 0.5;
+      const y = deep ? 8 + Math.floor(Math.random() * 30) : SEA - 2 - Math.floor(Math.random() * 6);
+      if (!water(x, y, z) || !water(x, y + 1, z)) continue;
+      const light = world.getLight(x, y, z);
+      let kind, n;
+      if (deep && light.sky === 0 && col.height > y + 6) {
+        kind = col.lush ? 'axolotl' : 'glow_squid';
+        n = 1 + Math.floor(Math.random() * 2);
+      } else if (!deep && light.sky >= 8 && col.height < SEA - 4) {
+        kind = 'squid';
+        n = 2 + Math.floor(Math.random() * 3);
+      } else continue;
+      for (let i = 0; i < n; i++) this.add(new Mob(game, kind, x + 0.5 + (Math.random() - 0.5) * 2, y + 0.2, z + 0.5 + (Math.random() - 0.5) * 2));
+      return;
     }
   }
 
