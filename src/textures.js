@@ -291,27 +291,43 @@ const GEN = {
     }
   },
   cactus_bottom(t, r) { GEN.cactus_top(t, r); },
+  // Minecraft-style crafting table: a framed top with a grid, and sides with legs, a dark
+  // rim and tools hanging on them.
   crafting_table_top(t, r) {
-    planks(t, r, OAK);
-    for (let i = 0; i < S; i++) {
-      t.set(i, 0, [80, 55, 30]); t.set(i, 15, [80, 55, 30]); t.set(0, i, [80, 55, 30]); t.set(15, i, [80, 55, 30]);
-      if (i > 1 && i < 14) { t.set(i, 5, [110, 80, 45]); t.set(i, 10, [110, 80, 45]); t.set(5, i, [110, 80, 45]); t.set(10, i, [110, 80, 45]); }
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const frame = x < 2 || y < 2 || x > 13 || y > 13;
+      const grid = !frame && (x === 5 || x === 10 || y === 5 || y === 10);
+      let c = frame ? mul(OAK, (x === 0 || y === 0 ? 0.72 : x === 15 || y === 15 ? 0.5 : 0.62)) : grid ? mul(OAK, 0.66) : mul(OAK, 1.1);
+      if (!frame && !grid && (x + y * 3) % 7 === 0) c = mul(OAK, 1.0);
+      t.set(x, y, mul(c, 0.94 + r() * 0.1));
     }
   },
   crafting_table_side(t, r) {
     planks(t, r, OAK);
-    for (let x = 0; x < S; x++) for (let y = 0; y < 3; y++) t.set(x, y, mul([120, 85, 50], 0.9 + r() * 0.15));
-    // saw
-    for (let x = 3; x < 12; x++) t.set(x, 6, [170, 170, 170]);
-    for (let x = 3; x < 12; x += 2) t.set(x, 7, [130, 130, 130]);
-    t.set(12, 6, [90, 60, 30]); t.set(13, 6, [90, 60, 30]); t.set(13, 7, [90, 60, 30]);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      if (y < 3) t.set(x, y, mul(OAK, (y === 2 ? 0.5 : 0.64) * (0.94 + r() * 0.1)));
+      else if (x < 2 || x > 13) t.set(x, y, mul(OAK, (x === 0 || x === 15 ? 0.52 : 0.66) * (0.94 + r() * 0.1)));
+    }
+    // A saw: grey blade with teeth, wooden handle.
+    for (let x = 3; x < 9; x++) for (let y = 5; y < 8; y++) t.set(x, y, y === 5 ? [196, 196, 200] : [158, 158, 164]);
+    for (let x = 3; x < 9; x += 2) t.set(x, 8, [120, 120, 126]);
+    for (let y = 5; y < 8; y++) { t.set(9, y, [96, 62, 30]); t.set(10, y, [76, 48, 22]); }
+    // A hammer: iron head on a handle.
+    for (let x = 10; x < 14; x++) t.set(x, 10, x === 13 ? [110, 110, 116] : [170, 170, 176]);
+    for (let y = 11; y < 15; y++) t.set(11, y, y % 2 ? [104, 70, 36] : [86, 56, 28]);
   },
   crafting_table_front(t, r) {
-    GEN.crafting_table_side(t, r);
-    for (let y = 9; y < 14; y++) t.set(4, y, [90, 60, 30]);
-    for (let x = 2; x < 7; x++) t.set(x, 9, [160, 160, 160]);
-    for (let y = 9; y < 14; y++) t.set(11, y, [90, 60, 30]);
-    t.set(10, 9, [150, 150, 150]); t.set(12, 9, [150, 150, 150]); t.set(11, 8, [150, 150, 150]);
+    planks(t, r, OAK);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      if (y < 3) t.set(x, y, mul(OAK, (y === 2 ? 0.5 : 0.64) * (0.94 + r() * 0.1)));
+      else if (x < 2 || x > 13) t.set(x, y, mul(OAK, (x === 0 || x === 15 ? 0.52 : 0.66) * (0.94 + r() * 0.1)));
+    }
+    // Tongs on the left, a hand drill on the right.
+    for (let k = 0; k < 6; k++) { t.set(4 + (k > 3 ? 1 : 0), 5 + k, [150, 150, 156]); t.set(7 - (k > 3 ? 1 : 0), 5 + k, [120, 120, 126]); }
+    t.set(5, 4, [176, 176, 182]); t.set(6, 4, [176, 176, 182]);
+    for (let y = 5; y < 12; y++) t.set(11, y, y < 7 ? [96, 62, 30] : [168, 168, 174]);
+    for (let x = 9; x < 14; x++) t.set(x, 6, [110, 72, 36]);
+    t.set(11, 12, [120, 120, 126]);
   },
   furnace_side(t, r) {
     noiseFill(t, r, [110, 110, 110], 0.08);
