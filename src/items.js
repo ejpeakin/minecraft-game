@@ -209,7 +209,12 @@ for (const [mat, a] of Object.entries(ARMOR)) {
   shaped(['MMM', 'M.M', 'M.M'], { M }, `${mat}_leggings`);
   shaped(['M.M', 'M.M'], { M }, `${mat}_boots`);
 }
-shaped(['WWW', 'PPP'], { W: 'red_wool', P: PLANKS }, 'red_bed');
+// Beds: three wool of one color on three planks of any wood, like Minecraft. A white
+// bed can be dyed any color.
+for (const [color] of COLORS) {
+  shaped(['WWW', 'PPP'], { W: `${color}_wool`, P: PLANKS }, `${color}_bed`);
+  if (ITEMS[`${color}_dye`] && color !== 'white') shapeless(['white_bed', `${color}_dye`], `${color}_bed`);
+}
 
 const accepts = (key, name) => (Array.isArray(key) ? key.includes(name) : key === name);
 

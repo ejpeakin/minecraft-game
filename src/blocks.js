@@ -186,8 +186,13 @@ for (let stage = 0; stage < 8; stage++) {
 def('hay_bale', { label: 'Hay Bale', tex: { top: 'hay_bale_top', bottom: 'hay_bale_top', side: 'hay_bale_side' }, hardness: 0.5, sound: 'grass', variants: 'axis' });
 // A two-block bed: the foot is where you place it, the head one block further on.
 const BED = { shape: 'bed', ...PARTIAL, hardness: 0.2, sound: 'cloth', variants: 'facing', interact: 'bed' };
-def('red_bed', { label: 'Red Bed', tex: { top: 'red_bed_foot_top', bottom: 'oak_planks', side: 'red_bed_foot_side' }, ...BED, bed: 'foot' });
-def('red_bed_head', { label: 'Red Bed', tex: { top: 'red_bed_head_top', bottom: 'oak_planks', side: 'red_bed_head_side' }, ...BED, bed: 'head', noItem: true, drop: null });
+def('red_bed', { label: 'Red Bed', tex: { top: 'red_bed_foot_top', bottom: 'oak_planks', side: 'red_bed_foot_side' }, ...BED, bed: 'foot', color: 'red' });
+def('red_bed_head', { label: 'Red Bed', tex: { top: 'red_bed_head_top', bottom: 'oak_planks', side: 'red_bed_head_side' }, ...BED, bed: 'head', noItem: true, drop: null, color: 'red' });
+for (const [color, label] of COLORS) {
+  if (color === 'red') continue;
+  def(`${color}_bed`, { label: `${label} Bed`, tex: { top: `${color}_bed_foot_top`, bottom: 'oak_planks', side: `${color}_bed_foot_side` }, ...BED, bed: 'foot', color });
+  def(`${color}_bed_head`, { label: `${label} Bed`, tex: { top: `${color}_bed_head_top`, bottom: 'oak_planks', side: `${color}_bed_head_side` }, ...BED, bed: 'head', noItem: true, drop: null, color });
+}
 
 // Expand variant blocks into several ids. 'facing' → 4 ids (base faces +z);
 // 'axis' → 3 ids (0 = y, 1 = x, 2 = z); 'door' and 'gate' → 8 (facing + 4 * open);
