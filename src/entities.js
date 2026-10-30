@@ -450,6 +450,13 @@ const squidParts = (base, spot, glow) => [
 ];
 function mul3(c, f) { return [c[0] * f, c[1] * f, c[2] * f]; }
 
+// A player's arm: skin, with the shirt's short sleeve at the top.
+const sleeve = (ctx, f, x, y, w, h, r) => {
+  noisyFill(ctx, x, y, w, h, [196, 142, 106], 0.06, r);
+  if (f === 2) noisyFill(ctx, x, y, w, h, [47, 168, 176], 0.06, r);
+  else if (f !== 3) noisyFill(ctx, x, y, w, 4, [47, 168, 176], 0.06, r);
+};
+
 const MOBS = {
   pig: {
     w: 0.9, h: 0.9, health: 10, speed: 1.6, hostile: false, food: 'wheat',
@@ -580,8 +587,8 @@ const MOBS = {
         px(c, x + 3, y + 6, '#7a4a30', 2, 1);
       }) },
       { name: 'body', size: [8, 12, 4], at: [0, 18, 0], color: [47, 168, 176] },
-      { name: 'arm', size: [4, 12, 4], at: [-6, 22, 0], off: [0, -5, 0], color: [196, 142, 106], swing: 0 },
-      { name: 'arm', size: [4, 12, 4], at: [6, 22, 0], off: [0, -5, 0], color: [196, 142, 106], swing: 1 },
+      { name: 'arm', size: [4, 12, 4], at: [-6, 22, 0], off: [0, -5, 0], paint: sleeve, swing: 0 },
+      { name: 'arm', size: [4, 12, 4], at: [6, 22, 0], off: [0, -5, 0], paint: sleeve, swing: 1 },
       { name: 'leg', size: [4, 12, 4], at: [-2, 12, 0], off: [0, -6, 0], color: [58, 63, 156], leg: 0 },
       { name: 'leg', size: [4, 12, 4], at: [2, 12, 0], off: [0, -6, 0], color: [58, 63, 156], leg: 1 },
     ],
