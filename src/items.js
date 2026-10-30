@@ -54,13 +54,22 @@ item('water_bucket', { label: 'Water Bucket', maxStack: 1, bucket: 'water' });
 item('lava_bucket', { label: 'Lava Bucket', maxStack: 1, bucket: 'lava' });
 item('map', { label: 'Map', maxStack: 1, map: true });
 item('explorer_map', { label: 'Explorer Map', maxStack: 1, map: true });
-for (const c of ['red', 'yellow', 'orange', 'green', 'lime', 'brown', 'black']) {
-  item(`${c}_dye`, { label: `${COLORS.find(([k]) => k === c)[1]} Dye`, dye: c });
-}
+// Every color of dye, like Minecraft's 16.
+for (const [c, label] of COLORS) item(`${c}_dye`, { label: `${label} Dye`, dye: c });
+item('raw_copper', { label: 'Raw Copper' });
+item('copper_ingot', { label: 'Copper Ingot' });
+item('redstone', { label: 'Redstone Dust' });
+item('lapis_lazuli', { label: 'Lapis Lazuli' });
+item('emerald', { label: 'Emerald' });
+item('amethyst_shard', { label: 'Amethyst Shard' });
+item('glow_berries', { label: 'Glow Berries', food: { hunger: 2, saturation: 0.4 }, hangPlant: 'cave_vines' });
+item('ink_sac', { label: 'Ink Sac' });
+item('glow_ink_sac', { label: 'Glow Ink Sac' });
+item('spyglass', { label: 'Spyglass', maxStack: 1, spyglass: true });
 
 export const TIERS = {
   wooden: { label: 'Wooden', level: 0, speed: 2, durability: 59, damage: 0, material: 'planks' },
-  stone: { label: 'Stone', level: 1, speed: 4, durability: 131, damage: 1, material: 'cobblestone' },
+  stone: { label: 'Stone', level: 1, speed: 4, durability: 131, damage: 1, material: ['cobblestone', 'cobbled_deepslate'] },
   iron: { label: 'Iron', level: 2, speed: 6, durability: 250, damage: 2, material: 'iron_ingot' },
   golden: { label: 'Golden', level: 0, speed: 12, durability: 32, damage: 0, material: 'gold_ingot' },
   diamond: { label: 'Diamond', level: 3, speed: 8, durability: 1561, damage: 3, material: 'diamond' },
@@ -130,7 +139,7 @@ function shapeless(ingredients, result, count = 1) {
 for (const wood of ['oak', 'birch', 'spruce', 'poplar']) shaped(['L'], { L: `${wood}_log` }, `${wood}_planks`, 4);
 shaped(['P', 'P'], { P: PLANKS }, 'stick', 4);
 shaped(['PP', 'PP'], { P: PLANKS }, 'crafting_table');
-shaped(['CCC', 'C.C', 'CCC'], { C: 'cobblestone' }, 'furnace');
+shaped(['CCC', 'C.C', 'CCC'], { C: ['cobblestone', 'cobbled_deepslate'] }, 'furnace');
 shaped(['PPP', 'P.P', 'PPP'], { P: PLANKS }, 'chest');
 shaped(['PSP', 'P.P', 'PSP'], { P: PLANKS, S: SLABS }, 'barrel');
 shaped(['C', 'S'], { C: COALS, S: 'stick' }, 'torch', 4);
@@ -149,9 +158,22 @@ shapeless(['dandelion'], 'yellow_dye');
 shapeless(['shelf_mushroom'], 'brown_dye');
 shapeless([COALS], 'black_dye');
 shapeless(['red_dye', 'yellow_dye'], 'orange_dye', 2);
-shapeless(['green_dye', 'yellow_dye'], 'lime_dye', 2);
+shapeless(['green_dye', 'white_dye'], 'lime_dye', 2);
+shapeless(['bone_meal'], 'white_dye');
+shapeless(['lapis_lazuli'], 'blue_dye');
+shapeless(['ink_sac'], 'black_dye');
+shapeless(['white_dye', 'black_dye'], 'gray_dye', 2);
+shapeless(['white_dye', 'gray_dye'], 'light_gray_dye', 2);
+shapeless(['white_dye', 'red_dye'], 'pink_dye', 2);
+shapeless(['white_dye', 'blue_dye'], 'light_blue_dye', 2);
+shapeless(['blue_dye', 'green_dye'], 'cyan_dye', 2);
+shapeless(['blue_dye', 'red_dye'], 'purple_dye', 2);
+shapeless(['purple_dye', 'pink_dye'], 'magenta_dye', 2);
+shapeless(['spore_blossom'], 'pink_dye');
+shapeless(['flowering_azalea'], 'pink_dye');
 shaped(['SG', 'GS'], { S: 'sand', G: 'gravel' }, 'white_concrete', 4);
-for (const [ingot, block] of [['iron_ingot', 'iron_block'], ['gold_ingot', 'gold_block'], ['diamond', 'diamond_block']]) {
+for (const [ingot, block] of [['iron_ingot', 'iron_block'], ['gold_ingot', 'gold_block'], ['diamond', 'diamond_block'],
+  ['copper_ingot', 'copper_block'], ['raw_copper', 'raw_copper_block'], ['lapis_lazuli', 'lapis_block'], ['redstone', 'redstone_block'], ['emerald', 'emerald_block']]) {
   shaped(['III', 'III', 'III'], { I: ingot }, block);
   shaped(['B'], { B: block }, ingot, 9);
 }
@@ -209,6 +231,22 @@ for (const [mat, a] of Object.entries(ARMOR)) {
   shaped(['MMM', 'M.M', 'M.M'], { M }, `${mat}_leggings`);
   shaped(['M.M', 'M.M'], { M }, `${mat}_boots`);
 }
+// Caves & Cliffs.
+shaped(['SS', 'SS'], { S: 'cobbled_deepslate' }, 'polished_deepslate', 4);
+shaped(['SS', 'SS'], { S: 'polished_deepslate' }, 'deepslate_bricks', 4);
+shaped(['SS', 'SS'], { S: 'deepslate_bricks' }, 'deepslate_tiles', 4);
+for (const rock of ['granite', 'diorite', 'andesite']) shaped(['SS', 'SS'], { S: rock }, `polished_${rock}`, 4);
+shaped(['CC', 'CC'], { C: 'copper_block' }, 'cut_copper', 4);
+shaped(['C', 'C', 'C'], { C: 'copper_ingot' }, 'lightning_rod');
+shaped(['A', 'C', 'C'], { A: 'amethyst_shard', C: 'copper_ingot' }, 'spyglass');
+shaped(['SS', 'SS'], { S: 'amethyst_shard' }, 'amethyst_block');
+shaped(['.S.', 'SGS', '.S.'], { S: 'amethyst_shard', G: 'glass' }, 'tinted_glass', 2);
+shaped(['PP', 'PP'], { P: 'pointed_dripstone' }, 'dripstone_block');
+shaped(['MM'], { M: 'moss_block' }, 'moss_carpet', 3);
+// Candles: string over a wax plug. (No bees yet, so wheat stands in for honeycomb.)
+shaped(['S', 'W'], { S: 'string', W: 'wheat' }, 'candle');
+for (const [color] of COLORS) shapeless(['candle', `${color}_dye`], `${color}_candle`);
+
 // Beds: three wool of one color on three planks of any wood, like Minecraft. A white
 // bed can be dyed any color.
 for (const [color] of COLORS) {
@@ -288,6 +326,10 @@ export const SMELTING = {
   gold_ore: 'gold_ingot',
   diamond_ore: 'diamond',
   coal_ore: 'coal',
+  deepslate_iron_ore: 'iron_ingot',
+  deepslate_gold_ore: 'gold_ingot',
+  raw_copper: 'copper_ingot',
+  cobbled_deepslate: 'deepslate',
   sand: 'glass',
   cobblestone: 'stone',
   porkchop: 'cooked_porkchop',
@@ -335,7 +377,7 @@ export function blockDrops(block, tool, rng) {
   if (tool?.type === 'shears' && (block.leaves || block.id === B.tall_grass)) return [{ id: block.name, count: 1 }];
   if (block.leaves) {
     const out = [];
-    if (rng() < 0.06) out.push({ id: `${block.leaves}_sapling`, count: 1 });
+    if (rng() < 0.06) out.push({ id: block.leaves === 'azalea' ? (block.name.startsWith('flowering') ? 'flowering_azalea' : 'azalea') : `${block.leaves}_sapling`, count: 1 });
     if (block.leaves === 'oak' && rng() < 0.02) out.push({ id: 'apple', count: 1 });
     return out;
   }
@@ -352,6 +394,8 @@ export function blockDrops(block, tool, rng) {
     if (block.crop < 7) return [{ id: 'wheat_seeds', count: 1 }];
     return [{ id: 'wheat', count: 1 }, { id: 'wheat_seeds', count: 1 + Math.floor(rng() * 3) }];
   }
+  if (tool?.type === 'shears' && (block.wallPlant || block.hangs === 'roots')) return [{ id: block.name, count: 1 }];
   if (!block.drop) return [];
-  return [{ id: block.drop, count: block.dropCount }];
+  const count = block.dropCount + Math.floor(rng() * (block.dropMax - block.dropCount + 1));
+  return [{ id: block.drop, count }];
 }

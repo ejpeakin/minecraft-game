@@ -365,7 +365,7 @@ export class MqttSocket {
   sendSnapshot(to) {
     const g = this.net.game;
     const world = {
-      seed: g.world.seed, mode: g.player.mode, name: g.worldName ?? 'World', time: g.world.time,
+      seed: g.world.seed, gen: g.world.genVersion, mode: g.player.mode, name: g.worldName ?? 'World', time: g.world.time,
       spawn: g.worldSpawn, mods: g.world.serialize().mods,
     };
     this.post({ t: 'snap', world }, to);

@@ -43,6 +43,7 @@ const SPLASHES = [
   'Made in a browser!', 'Autumn is here!', 'Sit on a cushion!', '16 colors of wool!', 'Find the abandoned camps!',
   'Press T to chat!', 'Punch a tree!', '100% procedural!', 'Waving leaves!', 'Creepers hate this!', 'Bring a torch!',
   'Explorer maps inside!', 'Straw beds, one use only!', 'Now multiplayer!', 'Look up at the sunset!',
+  'Caves & Cliffs!', 'Beware of goats!', 'Axolotls in lush caves!', 'Glow berries!', 'Mind the powder snow!',
 ];
 
 // Minecraft's button face: mid gray with faint pixel noise (each texture pixel is
@@ -183,6 +184,9 @@ export class UI {
 
     $('underwater').style.opacity = p.headInWater ? 1 : 0;
     $('inlava').style.opacity = p.headInLava ? 1 : 0;
+    $('frost').style.opacity = p.headInPowder ? 1 : Math.min(1, (p.freeze ?? 0) / 7);
+    $('spyglass').style.opacity = p.scoping ? 1 : 0;
+    $('crosshair').style.visibility = p.scoping ? 'hidden' : '';
     $('hurt').style.opacity = p.hurtFlash;
     const eatBar = $('eat-bar');
     eatBar.hidden = !(p.eating > 0);

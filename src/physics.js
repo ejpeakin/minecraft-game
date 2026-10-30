@@ -1,11 +1,12 @@
 // Axis-separated swept AABB collision against block shapes (the same clipping scheme
 // Minecraft uses), step-up for slabs and stairs, sneaking edge protection, fluid
 // checks, and a DDA voxel raycast that respects partial block shapes.
-import { SOLID, SHAPES, SHAPE, FLUID, shapeBoxes, BLOCKS } from './blocks.js';
+import { SOLID, SHAPES, SHAPE, FLUID, shapeBoxes, BLOCKS, B } from './blocks.js';
 
 const EPS = 1e-7;
 
-export function collisionBoxes(world, x0, y0, z0, x1, y1, z1, out = []) {
+// powder: powder snow counts as solid (a player in leather boots walks on it).
+export function collisionBoxes(world, x0, y0, z0, x1, y1, z1, out = [], powder = false) {
   out.length = 0;
   const ix0 = Math.floor(x0), ix1 = Math.floor(x1);
   const iy0 = Math.floor(y0) - 1, iy1 = Math.floor(y1);
@@ -18,7 +19,10 @@ export function collisionBoxes(world, x0, y0, z0, x1, y1, z1, out = []) {
       }
       for (let y = iy0; y <= iy1; y++) {
         const id = world.getBlock(x, y, z);
-        if (!SOLID[id]) continue;
+        if (!SOLID[id]) {
+          if (powder && id === B.powder_snow) out.push([x, y, z, x + 1, y + 1, z + 1]);
+          continue;
+        }
         if (SHAPES[id] === SHAPE.CUBE) {
           out.push([x, y, z, x + 1, y + 1, z + 1]);
           continue;
@@ -76,7 +80,7 @@ export function moveEntity(world, e, dt) {
 
   const wantX = dx, wantY = dy, wantZ = dz;
   const boxes = collisionBoxes(world, Math.min(a[0], a[0] + dx) - 0.01, Math.min(a[1], a[1] + dy) - 0.01, Math.min(a[2], a[2] + dz) - 0.01,
-    Math.max(a[3], a[3] + dx) + 0.01, Math.max(a[4], a[4] + dy) + (e.stepHeight ?? 0) + 0.01, Math.max(a[5], a[5] + dz) + 0.01, []);
+    Math.max(a[3], a[3] + dx) + 0.01, Math.max(a[4], a[4] + dy) + (e.stepHeight ?? 0) + 0.01, Math.max(a[5], a[5] + dz) + 0.01, [], !!e.powderWalk);
   const start = [...a];
   dy = clip(boxes, a, 1, dy);
   shift(a, 1, dy);

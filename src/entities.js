@@ -5,7 +5,10 @@ import * as THREE from './three.js';
 import { BLOCKS, B, SOLID, FLUID, SHAPES, SHAPE, shapeBoxes } from './blocks.js';
 import { ITEMS, blockDrops } from './items.js';
 import { moveEntity, fluidIn, touchesBlock, raycast } from './physics.js';
-import { HEIGHT } from './worldgen.js';
+import { HEIGHT, SEA, BIOME } from './worldgen.js';
+
+const GOAT_BIOMES = new Set([BIOME.SNOWY_SLOPES, BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS]);
+const GOAT_GROUND = new Set([B.snow_block, B.stone, B.packed_ice, B.calcite, B.snowy_grass]);
 import { mulberry32 } from './noise.js';
 import { DYE_COLORS } from './textures.js';
 import { itemGeometry } from './renderer.js';
@@ -430,6 +433,22 @@ const COW_BROWN = [92, 62, 42];
 const COW_WHITE = [232, 228, 220];
 const HEN_WHITE = [244, 244, 238];
 const HEN_LEG = [232, 168, 48];
+const GOAT_WHITE = [232, 228, 216];
+const SQUID = [44, 62, 98];
+const GLOW = [46, 168, 160];
+const AXOLOTL = [238, 168, 200];
+// Squid: a tall body with eight tentacles hanging from a ring underneath.
+const squidParts = (base, spot, glow) => [
+  { name: 'body', size: [10, 12, 10], at: [0, 16, 0], paint: withFront(blotched(base, spot, glow ? 10 : 4, 0.06), (c, x, y) => {
+    px(c, x + 2, y + 8, glow ? '#e8fff4' : '#d8dce8', 2, 2); px(c, x + 6, y + 8, glow ? '#e8fff4' : '#d8dce8', 2, 2);
+    px(c, x + 2, y + 9, '#101418'); px(c, x + 7, y + 9, '#101418');
+  }) },
+  ...Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * Math.PI * 2;
+    return { name: 'tentacle', size: [2, 10, 2], at: [Math.round(Math.sin(a) * 3.5), 10, Math.round(Math.cos(a) * 3.5)], off: [0, -5, 0], paint: blotched(mul3(base, 0.9), spot, glow ? 3 : 1, 0.06), tentacle: i };
+  }),
+];
+function mul3(c, f) { return [c[0] * f, c[1] * f, c[2] * f]; }
 
 const MOBS = {
   pig: {
@@ -502,6 +521,52 @@ const MOBS = {
       { id: 'head', name: 'head', size: [4, 6, 3], at: [0, 11, 3], off: [0, 1, 1.5], paint: withFront(solid(HEN_WHITE, 0.04), (c, x, y) => eyes(c, x, y, 1, 0, 3, false)) },
       { name: 'beak', parent: 'head', size: [4, 2, 2], at: [0, 11, 3], off: [0, 1, 4], paint: solid([246, 186, 44], 0.05) },
       { name: 'wattle', parent: 'head', size: [2, 2, 2], at: [0, 11, 3], off: [0, -1, 4], paint: solid([204, 32, 32], 0.05) },
+    ],
+  },
+  // Caves & Cliffs. Goats live on the high mountains, jump far and sometimes ram you.
+  goat: {
+    w: 0.9, h: 1.3, health: 10, speed: 1.6, hostile: false, food: 'wheat', leaps: true,
+    drops: () => [],
+    parts: [
+      { name: 'leg', size: [3, 10, 3], at: [-2.5, 10, 5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 0 },
+      { name: 'leg', size: [3, 10, 3], at: [2.5, 10, 5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 1 },
+      { name: 'leg', size: [3, 10, 3], at: [-2.5, 10, -5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 1 },
+      { name: 'leg', size: [3, 10, 3], at: [2.5, 10, -5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 0 },
+      { name: 'body', size: [9, 9, 16], at: [0, 14.5, 0], paint: blotched(GOAT_WHITE, [212, 204, 190], 7, 0.05) },
+      { id: 'head', name: 'head', size: [5, 7, 8], at: [0, 19, 7], off: [0, 1, 4], paint: withFront(solid(GOAT_WHITE, 0.05), (c, x, y) => {
+        px(c, x, y + 2, '#c8a26a'); px(c, x + 4, y + 2, '#c8a26a'); px(c, x, y + 2, '#2a2016'); px(c, x + 4, y + 2, '#2a2016');
+        px(c, x + 1, y + 5, '#b8a890', 3, 1);
+      }) },
+      { name: 'horn', parent: 'head', size: [2, 6, 2], at: [0, 19, 7], off: [-1.5, 7, 2], paint: solid([186, 172, 146], 0.05) },
+      { name: 'horn', parent: 'head', size: [2, 6, 2], at: [0, 19, 7], off: [1.5, 7, 2], paint: solid([186, 172, 146], 0.05) },
+      { name: 'beard', parent: 'head', size: [1, 4, 2], at: [0, 19, 7], off: [0, -4.5, 6], paint: solid([220, 214, 200], 0.05) },
+    ],
+  },
+  squid: {
+    w: 0.8, h: 1.0, health: 10, speed: 1.6, hostile: false, aquatic: true, dries: true,
+    drops: (r) => [{ id: 'ink_sac', count: 1 + Math.floor(r() * 3) }],
+    parts: squidParts(SQUID, [70, 92, 140], false),
+  },
+  glow_squid: {
+    w: 0.8, h: 1.0, health: 10, speed: 1.4, hostile: false, aquatic: true, dries: true, glows: true,
+    drops: (r) => [{ id: 'glow_ink_sac', count: 1 + Math.floor(r() * 3) }],
+    parts: squidParts(GLOW, [140, 250, 220], true),
+  },
+  // Axolotls swim in lush cave pools, in five colors (blue is very rare).
+  axolotl: {
+    w: 0.75, h: 0.42, health: 14, speed: 2.2, hostile: false, aquatic: true, food: 'glow_berries', tinted: true,
+    drops: () => [],
+    parts: [
+      { name: 'body', size: [8, 4, 10], at: [0, 3, 0], paint: blotched(AXOLOTL, [222, 140, 182], 4, 0.05) },
+      { id: 'head', name: 'head', size: [8, 5, 5], at: [0, 3.5, 5], off: [0, 0, 2.5], paint: withFront(solid(AXOLOTL, 0.05), (c, x, y) => {
+        px(c, x + 1, y + 2, '#101010'); px(c, x + 6, y + 2, '#101010'); px(c, x + 3, y + 4, '#c86a96', 2, 1);
+      }) },
+      ...[-1, 1].flatMap((side) => [0, 1, 2].map((k) => ({ name: 'gill', parent: 'head', size: [1, 3, 1], at: [0, 3.5, 5], off: [side * 4.5, 2 + k * 0.5 - 1, 1 + k], paint: solid([214, 70, 132], 0.06) }))),
+      { name: 'tail', size: [1, 4, 8], at: [0, 3.5, -5], off: [0, 0, -4], paint: solid([230, 150, 190], 0.05), tail: true },
+      { name: 'leg', size: [3, 1, 2], at: [-4.5, 1, 3], paint: solid(AXOLOTL), leg: 0 },
+      { name: 'leg', size: [3, 1, 2], at: [4.5, 1, 3], paint: solid(AXOLOTL), leg: 1 },
+      { name: 'leg', size: [3, 1, 2], at: [-4.5, 1, -3], paint: solid(AXOLOTL), leg: 1 },
+      { name: 'leg', size: [3, 1, 2], at: [4.5, 1, -3], paint: solid(AXOLOTL), leg: 0 },
     ],
   },
   // Other players in multiplayer (never spawned as a mob).
@@ -631,6 +696,13 @@ function randomSheepColor() {
   for (const [c, p] of SHEEP_COLORS) if ((r -= p) < 0) return c;
   return 'white';
 }
+// Axolotl colors (lucy, wild, gold, cyan, and the rare blue) as tints of the pink skin.
+const AXOLOTL_TINTS = { lucy: [1, 1, 1], wild: [0.62, 0.46, 0.4], gold: [1.06, 0.86, 0.42], cyan: [0.74, 0.96, 1.04], blue: [0.44, 0.52, 1.12] };
+function randomAxolotl() {
+  if (Math.random() < 1 / 1200) return 'blue';
+  return ['lucy', 'wild', 'gold', 'cyan'][Math.floor(Math.random() * 4)];
+}
+
 // Wool tint: the dye color relative to white wool.
 function woolTint(color) {
   const c = DYE_COLORS[color] ?? DYE_COLORS.white;
@@ -649,7 +721,12 @@ export class Mob extends Entity {
     this.health = opts.health ?? def.health;
     this.baby = baby;
     this.growTime = opts.growTime ?? (baby ? 240 : 0);
-    this.color = kind === 'sheep' ? opts.color ?? randomSheepColor() : null;
+    this.color = kind === 'sheep' ? opts.color ?? randomSheepColor() : kind === 'axolotl' ? opts.color ?? randomAxolotl() : null;
+    this.ramTimer = 20 + Math.random() * 40;
+    this.ram = 0; // > 0 while a goat lowers its head and charges
+    this.swimGoal = null;
+    this.swimTime = 0;
+    this.dryTime = 0;
     this.sheared = !!opts.sheared;
     this.loveTime = 0;
     this.breedCooldown = opts.breedCooldown ?? 0;
@@ -702,7 +779,7 @@ export class Mob extends Entity {
     const id = stack?.id;
     const survival = player.mode === 'survival';
     const use = () => { if (survival) player.inventory.consumeHeld(1); };
-    if (this.kind === 'cow' && id === 'bucket' && !this.baby) {
+    if ((this.kind === 'cow' || this.kind === 'goat') && id === 'bucket' && !this.baby) {
       player.exchangeHeld({ id: 'milk_bucket', count: 1 });
       game.audio.splash(this, player);
       return true;
@@ -822,6 +899,10 @@ export class Mob extends Entity {
       return;
     }
 
+    if (this.def.aquatic && (this.inWater || this.kind !== 'axolotl')) {
+      this.swim(dt);
+      return;
+    }
     let moveX = 0, moveZ = 0, speed = this.def.speed;
     this.angry = Math.max(0, this.angry - dt);
     let canTarget = this.hostile && !player.dead && player.mode === 'survival';
@@ -912,7 +993,24 @@ export class Mob extends Entity {
           game.audio.pop();
         }
       }
-      if (this.grazeTime > 0) {
+      if (this.def.leaps) this.goatMind(dt, player, pd);
+      if (this.ram > 0) {
+        // Charging: head down, straight at where the player stood.
+        this.ram -= dt;
+        const [tx, tz] = this.ramAt;
+        const dx = tx - this.x, dz = tz - this.z;
+        const d = Math.hypot(dx, dz) || 1;
+        this.targetYaw = Math.atan2(dx, dz);
+        if (this.ram < 1.2) { moveX = dx / d; moveZ = dz / d; speed = 6.5; }
+        if (this.ram < 1.2 && pd < 1.5 && !player.dead) {
+          this.ram = 0;
+          player.damage(2, { x: this.x, z: this.z, cause: 'goat' });
+          player.vx += (dx / d) * 9;
+          player.vz += (dz / d) * 9;
+          player.vy = Math.max(player.vy, 6);
+        }
+        if (d < 0.6) this.ram = 0;
+      } else if (this.grazeTime > 0) {
         this.moving = false;
       } else if (goal && this.fleeTime <= 0) {
         const dx = goal.x - this.x, dz = goal.z - this.z;
@@ -955,7 +1053,7 @@ export class Mob extends Entity {
       this.vx += (wantX - this.vx) * Math.min(1, accel * dt);
       this.vz += (wantZ - this.vz) * Math.min(1, accel * dt);
     }
-    if ((moveX || moveZ) && this.collidedH && this.onGround) this.vy = 8.6;
+    if ((moveX || moveZ) && this.collidedH && this.onGround) this.vy = this.def.leaps ? 11 : 8.6;
     // Spiders walk up walls.
     if (this.def.climbs && (moveX || moveZ) && this.collidedH) this.vy = Math.max(this.vy, 3.2);
     if (this.inWater) this.vy = Math.max(this.vy, 1.6);
@@ -982,6 +1080,78 @@ export class Mob extends Entity {
     }
     const sp = Math.hypot(this.vx, this.vz);
     this.syncMesh(dt, sp);
+  }
+
+  // Goats leap now and then, and every so often pick a player to ram.
+  goatMind(dt, player, pd) {
+    if (this.onGround && this.moving && Math.random() < dt / 8) {
+      this.vy = 11;
+      this.vx += Math.sin(this.yaw) * 3;
+      this.vz += Math.cos(this.yaw) * 3;
+    }
+    this.ramTimer -= dt;
+    if (this.ramTimer <= 0 && this.ram <= 0) {
+      this.ramTimer = 30 + Math.random() * 60;
+      if (!this.baby && pd > 3 && pd < 12 && !player.dead && player.mode === 'survival' && this.canSee(player)) {
+        this.ram = 2.2; // a second of lowering the head, then the charge
+        this.ramAt = [player.x, player.z];
+        this.game.audio.mob('goat', 'idle', this, player);
+      }
+    }
+  }
+
+  // Squid, glow squid and axolotls in water: drift toward a spot somewhere in the water
+  // nearby, and flee when hit. Squid out of water flop about and dry out.
+  swim(dt) {
+    const game = this.game;
+    const world = game.world;
+    const player = game.player;
+    const water = (x, y, z) => FLUID[world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))] === 1;
+    this.swimTime -= dt;
+    this.fleeTime -= dt;
+    if (this.inWater) {
+      this.dryTime = 0;
+      if (this.swimTime <= 0 || !this.swimGoal) {
+        this.swimTime = 2 + Math.random() * 4;
+        this.swimGoal = null;
+        for (let k = 0; k < 8 && !this.swimGoal; k++) {
+          let tx = this.x + (Math.random() - 0.5) * 12, ty = this.y + (Math.random() - 0.5) * 5, tz = this.z + (Math.random() - 0.5) * 12;
+          if (this.fleeTime > 0) { tx = this.x + (this.x - player.x) * 2; tz = this.z + (this.z - player.z) * 2; }
+          if (water(tx, ty, tz) && water(tx, ty + this.h, tz)) this.swimGoal = [tx, ty, tz];
+        }
+      }
+      let wx = 0, wy = 0.2, wz = 0;
+      if (this.swimGoal) {
+        const [tx, ty, tz] = this.swimGoal;
+        const dx = tx - this.x, dy = ty - this.y, dz = tz - this.z;
+        const d = Math.hypot(dx, dy, dz);
+        if (d < 0.6) this.swimGoal = null;
+        else {
+          const sp = this.def.speed * (this.fleeTime > 0 ? 2 : 1);
+          wx = (dx / d) * sp; wy = (dy / d) * sp; wz = (dz / d) * sp;
+          this.targetYaw = Math.atan2(dx, dz);
+        }
+      }
+      const k = Math.min(1, dt * 12);
+      this.vx += (wx - this.vx) * k;
+      this.vy += (wy - this.vy) * k;
+      this.vz += (wz - this.vz) * k;
+    } else if (this.def.dries) {
+      this.dryTime += dt;
+      if (this.onGround && Math.random() < dt * 1.5) { this.vy = 4; this.vx = (Math.random() - 0.5) * 3; this.vz = (Math.random() - 0.5) * 3; }
+      if (this.dryTime > 1) { this.dryTime = 0; this.damage(1, this.x, this.z, 0); }
+    }
+    let dyaw = this.targetYaw - this.yaw;
+    dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+    this.yaw += dyaw * Math.min(1, dt * 4);
+    this.physics(dt, this.inWater ? 0 : 28);
+    this.lookAround(dt, player, this.distTo(player));
+    this.soundTimer -= dt;
+    if (this.soundTimer <= 0) {
+      this.soundTimer = 8 + Math.random() * 12;
+      game.audio.mob(this.kind, 'idle', this, player);
+    }
+    this.syncMesh(dt, Math.hypot(this.vx, this.vz));
   }
 
   // Sheep stop now and then to eat grass, which grows their wool back.
@@ -1041,6 +1211,15 @@ export class Mob extends Entity {
         pivot.rotation.z = spec.rot[2] + Math.abs(k) * 0.25 * Math.sign(spec.rot[2]);
       }
       if (spec.wool) pivot.visible = !this.sheared;
+      if (spec.tentacle !== undefined) {
+        // Tentacles open and close as a squid swims.
+        const a = (spec.tentacle / 8) * Math.PI * 2;
+        const open = 0.25 + Math.sin(this.age * 3.2) * 0.25;
+        pivot.rotation.x = -Math.cos(a) * open;
+        pivot.rotation.z = Math.sin(a) * open;
+      }
+      if (spec.tail) pivot.rotation.y = Math.sin(this.age * (this.inWater ? 7 : 3)) * 0.35;
+      if (spec.name === 'head' && !spec.parent && this.ram > 1.2) { pivot.rotation.x = 0.7; continue; }
       if (spec.name === 'head' && !spec.parent) {
         pivot.rotation.y = this.headYaw;
         pivot.rotation.x = this.headPitch;
@@ -1055,9 +1234,11 @@ export class Mob extends Entity {
     this.shadow.update(this.x, this.y, this.z, size);
     this.mesh.scale.set(swell * size, (1 + (swell - 1) * 0.5) * size, swell * size);
     if (this.deathTime > 0) return;
-    const b = brightness(this.game.world, this.game.sky, this.x, this.y + this.h * 0.7, this.z);
+    const b = this.def.glows ? 1 : brightness(this.game.world, this.game.sky, this.x, this.y + this.h * 0.7, this.z);
+    const tint = this.def.tinted ? AXOLOTL_TINTS[this.color] ?? AXOLOTL_TINTS.lucy : null;
     if (this.hurtTime > 0) this.material.color.setRGB(1, 0.35, 0.35);
     else if (this.fuse > 0 && Math.floor(this.fuse * 8) % 2) this.material.color.setRGB(1, 1, 1);
+    else if (tint) this.material.color.setRGB(b * tint[0], b * tint[1], b * tint[2]);
     else this.material.color.setRGB(b, b, b);
     if (this.woolMaterial) {
       const [r, g, bl] = woolTint(this.color);
@@ -1185,13 +1366,13 @@ export class EntityManager {
       if (e.dead) continue;
       if (!this.game.world.isLoaded(e.x, e.z)) {
         if (e instanceof Mob) {
-          if (!e.hostile && e.deathTime <= 0 && this.parked.length < 400) this.parked.push(e.serialize());
+          if (!e.hostile && !e.def.aquatic && e.deathTime <= 0 && this.parked.length < 400) this.parked.push(e.serialize());
           e.dead = true;
         }
         continue;
       }
       e.update(dt);
-      if (e instanceof Mob && e.hostile && e.distTo(p) > 72) e.dead = true;
+      if (e instanceof Mob && (e.hostile || e.def.aquatic) && e.distTo(p) > 72) e.dead = true;
     }
     if (this.list.some((e) => e.dead)) {
       for (const e of this.list) if (e.dead) e.dispose();
@@ -1249,13 +1430,24 @@ export class EntityManager {
         if (spot) this.add(new Mob(game, kind, spot.x + 0.5, spot.y, spot.z + 0.5));
       }
     }
+    this.waterTimer = (this.waterTimer ?? 3) - dt;
+    if (this.waterTimer <= 0) {
+      this.waterTimer = 5;
+      if (mobs.filter((m) => m.def.aquatic).length < 6) this.spawnInWater(p);
+    }
     if (this.passiveTimer <= 0) {
       this.passiveTimer = 4;
-      const passive = mobs.filter((m) => !m.hostile).length;
+      const passive = mobs.filter((m) => !m.hostile && !m.def.aquatic).length;
       if (passive < 10 && game.sky.daylight > 0.5) {
-        const spot = this.findSpot(p, 24, 56, (x, y, z) => world.getBlock(x, y - 1, z) === B.grass && world.getLight(x, y, z).sky >= 12, true);
+        // Farm animals on grass; goats on the high mountains.
+        const spot = this.findSpot(p, 24, 56, (x, y, z) => {
+          const ground = world.getBlock(x, y - 1, z);
+          if (world.getLight(x, y, z).sky < 12) return false;
+          return ground === B.grass || (GOAT_GROUND.has(ground) && GOAT_BIOMES.has(world.gen.column(x, z).biome));
+        }, true);
         if (spot) {
-          const kind = ['pig', 'sheep', 'cow', 'chicken'][Math.floor(Math.random() * 4)];
+          const goats = GOAT_BIOMES.has(world.gen.column(spot.x, spot.z).biome);
+          const kind = goats ? 'goat' : ['pig', 'sheep', 'cow', 'chicken'][Math.floor(Math.random() * 4)];
           const n = 2 + Math.floor(Math.random() * 3);
           for (let i = 0; i < n; i++) {
             const sx = spot.x + Math.floor((Math.random() - 0.5) * 4);
@@ -1265,6 +1457,35 @@ export class EntityManager {
           }
         }
       }
+    }
+  }
+
+  // Squid in open water near the surface; glow squid in dark underground water, or
+  // axolotls if it's a lush cave.
+  spawnInWater(p) {
+    const game = this.game;
+    const world = game.world;
+    const water = (x, y, z) => FLUID[world.getBlock(x, y, z)] === 1;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 14 + Math.random() * 30;
+      const x = Math.floor(p.x + Math.cos(a) * r), z = Math.floor(p.z + Math.sin(a) * r);
+      if (!world.isLoaded(x, z) || !world.getChunk(Math.floor(x / 16), Math.floor(z / 16))?.light) continue;
+      const col = world.gen.column(x, z);
+      const deep = Math.random() < 0.5;
+      const y = deep ? 8 + Math.floor(Math.random() * 30) : SEA - 2 - Math.floor(Math.random() * 6);
+      if (!water(x, y, z) || !water(x, y + 1, z)) continue;
+      const light = world.getLight(x, y, z);
+      let kind, n;
+      if (deep && light.sky === 0 && col.height > y + 6) {
+        kind = col.lush ? 'axolotl' : 'glow_squid';
+        n = 1 + Math.floor(Math.random() * 2);
+      } else if (!deep && light.sky >= 8 && col.height < SEA - 4) {
+        kind = 'squid';
+        n = 2 + Math.floor(Math.random() * 3);
+      } else continue;
+      for (let i = 0; i < n; i++) this.add(new Mob(game, kind, x + 0.5 + (Math.random() - 0.5) * 2, y + 0.2, z + 0.5 + (Math.random() - 0.5) * 2));
+      return;
     }
   }
 

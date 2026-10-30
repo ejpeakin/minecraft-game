@@ -11,8 +11,23 @@ export const SEA = 48;
 
 export const BIOME = {
   OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, DESERT: 4, SNOWY: 5, TAIGA: 6, MOUNTAINS: 7, DAPPLED: 8, FROZEN_OCEAN: 9,
+  JAGGED_PEAKS: 10, FROZEN_PEAKS: 11, STONY_PEAKS: 12, SNOWY_SLOPES: 13, GROVE: 14, MEADOW: 15,
 };
-export const BIOME_NAME = ['Ocean', 'Beach', 'Plains', 'Forest', 'Desert', 'Snowy Plains', 'Taiga', 'Mountains', 'Dappled Forest', 'Frozen Ocean'];
+export const BIOME_NAME = ['Ocean', 'Beach', 'Plains', 'Forest', 'Desert', 'Snowy Plains', 'Taiga', 'Mountains', 'Dappled Forest', 'Frozen Ocean',
+  'Jagged Peaks', 'Frozen Peaks', 'Stony Peaks', 'Snowy Slopes', 'Grove', 'Meadow'];
+const PEAKS = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS, BIOME.SNOWY_SLOPES, BIOME.GROVE, BIOME.MEADOW]);
+
+// World generation versions. 1 is the original; 2 (Caves & Cliffs) adds deepslate, new
+// ores and stones, big caves with underground lakes, lush and dripstone caves, amethyst
+// geodes, and taller, cliffier mountains. Worlds keep the version they were made with,
+// so an old save's terrain never changes under the player's builds.
+export const GEN_VERSION = 2;
+const DEEPSLATE_TOP = 12; // solid deepslate below this, mixing into stone up to +8
+const GEODE_REGION = 48;
+const DEEP_ORE = {};
+for (const ore of ['coal', 'iron', 'gold', 'diamond', 'copper', 'redstone', 'lapis', 'emerald']) DEEP_ORE[B[`${ore}_ore`]] = B[`deepslate_${ore}_ore`];
+const DIRS = [[0, 1], [-1, 0], [0, -1], [1, 0]]; // facing 0-3, as in blocks.js
+const CAVE_WALL = new Set([B.stone, B.deepslate, B.dirt, B.gravel, B.tuff, B.granite, B.diorite, B.andesite, B.calcite]);
 
 const CAMP_REGION = 160;
 const CAMP_RADIUS = 8;
@@ -20,8 +35,10 @@ const POPLAR_LEAVES = [B.red_poplar_leaves, B.orange_poplar_leaves, B.yellow_pop
 const TENT_COLORS = ['white', 'brown', 'green', 'light_gray', 'orange', 'red'];
 
 export class WorldGen {
-  constructor(seed) {
+  constructor(seed, version = 1) {
     this.seed = seed | 0;
+    this.version = version;
+    this.v2 = version >= 2;
     const r = mulberry32(this.seed);
     this.nCont = createNoise2D(r);
     this.nHill = createNoise2D(r);
@@ -34,6 +51,12 @@ export class WorldGen {
     this.nCaveA = createNoise3D(r);
     this.nCaveB = createNoise3D(r);
     this.nCheese = createNoise3D(r);
+    // Version 2 noises come after the original ones so those stay the same.
+    this.nJag = createNoise2D(r);
+    this.nCliff = createNoise2D(r);
+    this.nAquifer = createNoise2D(r);
+    this.nLush = createNoise2D(r);
+    this.nDrip = createNoise2D(r);
     this.colCache = new Map();
     this.campCache = new Map();
   }
@@ -53,10 +76,25 @@ export class WorldGen {
     const temp = fbm2(this.nTemp, x * 0.0016, z * 0.0016, 3) + this.nDetail(x * 0.05, z * 0.05) * 0.02;
     const hum = fbm2(this.nHum, x * 0.0019 + 50, z * 0.0019 - 50, 3);
     let height = SEA - 16 + land * 20 + hills * (4 + 9 * land) + mount * ridge * 52;
-    height = Math.max(4, Math.min(HEIGHT - 8, Math.round(height)));
+    if (this.v2 && mount > 0) {
+      // Caves & Cliffs mountains: taller, sharper peaks, and stepped cliffs in places.
+      const jag = ridged2(this.nJag, x * 0.021, z * 0.021, 3);
+      height = SEA - 16 + land * 20 + hills * (4 + 9 * land) + mount * (Math.pow(ridge, 1.5) * 64 + jag * 12 * mount);
+      const cliff = smoothstep(0.05, 0.35, this.nCliff(x * 0.005, z * 0.005)) * smoothstep(0.05, 0.3, mount);
+      if (cliff > 0) {
+        const t = height / 7;
+        const stepped = (Math.floor(t) + smoothstep(0.3, 0.7, t - Math.floor(t))) * 7;
+        height += (stepped - height) * cliff;
+      }
+    }
+    height = Math.max(4, Math.min(HEIGHT - (this.v2 ? 6 : 8), Math.round(height)));
     let biome;
     if (height < SEA - 1) biome = temp < -0.4 ? BIOME.FROZEN_OCEAN : BIOME.OCEAN;
-    else if (mount > 0.3 && height > 74) biome = BIOME.MOUNTAINS;
+    else if (this.v2 && mount > 0.3 && height > 74) {
+      if (height >= 104) biome = temp < -0.15 ? BIOME.FROZEN_PEAKS : temp > 0.25 ? BIOME.STONY_PEAKS : BIOME.JAGGED_PEAKS;
+      else if (height >= 90) biome = temp < 0.12 ? BIOME.SNOWY_SLOPES : BIOME.STONY_PEAKS;
+      else biome = temp < -0.1 ? BIOME.GROVE : BIOME.MEADOW;
+    } else if (mount > 0.3 && height > 74) biome = BIOME.MOUNTAINS;
     else if (height <= SEA && temp > -0.4) biome = BIOME.BEACH;
     else if (temp < -0.4) biome = BIOME.SNOWY;
     else if (temp < -0.2) biome = BIOME.TAIGA;
@@ -65,6 +103,14 @@ export class WorldGen {
     else if (hum > 0.12) biome = BIOME.FOREST;
     else biome = BIOME.PLAINS;
     c = { height, biome, temp, hum, mount, detail: this.nDetail(x * 0.09, z * 0.09) };
+    if (this.v2) {
+      // Underground lakes fill caves up to this height (-1: none here).
+      const aq = this.nAquifer(x * 0.007, z * 0.007);
+      c.aquifer = aq > 0.1 ? Math.min(height - 10, 12 + Math.floor((aq - 0.1) * 46)) : -1;
+      // Cave biomes under this column.
+      c.lush = this.nLush(x * 0.009, z * 0.009) > 0.32 && hum > -0.2;
+      c.drip = !c.lush && this.nDrip(x * 0.011, z * 0.011) > 0.38;
+    }
     this.colCache.set(key, c);
     return c;
   }
@@ -83,6 +129,18 @@ export class WorldGen {
         if (col.height > 100) return [B.snow_block, B.stone];
         if (col.height < 92 && col.detail > 0.1) return [B.grass, B.dirt, B.dirt];
         return [B.stone];
+      case BIOME.JAGGED_PEAKS:
+        return col.height > 98 ? [B.snow_block, B.snow_block, B.stone] : [B.stone];
+      case BIOME.FROZEN_PEAKS:
+        return col.detail > 0.15 ? [B.packed_ice, B.packed_ice, B.stone] : [B.snow_block, B.snow_block, B.packed_ice];
+      case BIOME.STONY_PEAKS:
+        return col.detail > 0.35 ? [B.calcite, B.calcite, B.stone] : [B.stone];
+      case BIOME.SNOWY_SLOPES:
+        return col.detail > 0.32 ? [B.powder_snow, B.powder_snow, B.snow_block, B.stone] : [B.snow_block, B.snow_block, B.stone];
+      case BIOME.GROVE:
+        return col.detail > 0.45 ? [B.powder_snow, B.snow_block, B.dirt] : [B.snowy_grass, B.dirt, B.dirt, B.dirt];
+      case BIOME.MEADOW:
+        return [B.grass, B.dirt, B.dirt, B.dirt];
       default:
         return [B.grass, B.dirt, B.dirt, B.dirt];
     }
@@ -131,8 +189,10 @@ export class WorldGen {
     };
     const a = sample(0);
     const b = sample(1);
-    const width = 0.085 + (y < 30 ? 0.03 : 0);
+    const width = 0.085 + (y < 30 ? 0.03 : 0) + (this.v2 ? 0.01 : 0);
     if (Math.abs(a) < width && Math.abs(b) < width) return true;
+    // Version 2: big open caverns deep down, smaller ones higher up.
+    if (this.v2) return y < 56 && sample(2) > 0.6 - smoothstep(44, 12, y) * 0.13;
     return y < 50 && sample(2) > 0.6;
   }
 
@@ -154,7 +214,8 @@ export class WorldGen {
         col.x = x;
         col.z = z;
         const h = col.height;
-        const surf = this.surfaceBlocks(col);
+        const surf = this.v2 && this.steep(x, z, col) ? [B.stone] : this.surfaceBlocks(col);
+        const bands = col.biome === BIOME.STONY_PEAKS ? Math.floor(col.detail * 4 + 4) : -1;
         for (let y = 0; y <= h; y++) {
           let id;
           if (y === 0 || (y < 4 && hash3(x, y, z, this.seed) < 0.5 - y * 0.12)) id = B.bedrock;
@@ -162,7 +223,16 @@ export class WorldGen {
             const depth = h - y;
             id = depth < surf.length ? surf[depth] : B.stone;
             if (id === B.grass && h < SEA) id = B.dirt;
-            if (this.carved(lat, lx, y, lz, col)) id = y <= 10 ? B.lava : 0;
+            if (!this.v2) {
+              if (this.carved(lat, lx, y, lz, col)) id = y <= 10 ? B.lava : 0;
+            } else {
+              if (id === B.stone) {
+                // Deepslate at the bottom, blending into stone; calcite bands in stony peaks.
+                if (y < DEEPSLATE_TOP || (y < DEEPSLATE_TOP + 8 && hash3(x, y, z, this.seed + 5) < (DEEPSLATE_TOP + 8 - y) / 9)) id = B.deepslate;
+                else if (bands >= 0 && depth < 16 && (y + bands) % 11 < 2) id = B.calcite;
+              }
+              if (this.carved(lat, lx, y, lz, col)) id = y <= 6 ? B.lava : y <= col.aquifer ? B.water : 0;
+            }
           }
           blocks[idx(lx, y, lz)] = id;
         }
@@ -174,6 +244,12 @@ export class WorldGen {
     }
 
     this.placeOres(blocks, rng, idx);
+    if (this.v2) {
+      this.placeRocks(blocks, rng, idx);
+      this.placeEmeralds(blocks, rng, idx, ox, oz);
+      this.decorateCaves(blocks, idx, ox, oz);
+      this.placeGeodes(blocks, idx, ox, oz);
+    }
 
     const camps = this.campsNear(ox - CAMP_RADIUS - 2, oz - CAMP_RADIUS - 2, ox + CHUNK + CAMP_RADIUS + 2, oz + CHUNK + CAMP_RADIUS + 2);
     const put = (x, y, z, id, force = false) => {
@@ -217,6 +293,7 @@ export class WorldGen {
           else if (col.biome === BIOME.DAPPLED) plant = r < 0.06 ? B.red_shrub : r < 0.14 ? B.tall_grass : r < 0.145 ? B.dandelion : 0;
           else if (col.biome === BIOME.TAIGA) plant = r < 0.05 ? B.tall_grass : 0;
           else if (col.biome === BIOME.MOUNTAINS) plant = r < 0.03 ? B.tall_grass : 0;
+          else if (col.biome === BIOME.MEADOW) plant = r < 0.3 ? B.tall_grass : r < 0.36 ? B.dandelion : r < 0.42 ? B.poppy : 0;
         } else if (ground === B.sand && col.biome === BIOME.DESERT) {
           if (r < 0.006) plant = B.dead_bush;
           else if (r < 0.011) {
@@ -232,7 +309,18 @@ export class WorldGen {
   }
 
   placeOres(blocks, rng, idx) {
-    const veins = [
+    // Version 2 spreads ores like Minecraft 1.18 (squeezed into this world's height).
+    const veins = this.v2 ? [
+      [B.coal_ore, 16, 10, 20, 120],
+      [B.copper_ore, 10, 9, 8, 80],
+      [B.iron_ore, 12, 7, 2, 72],
+      [B.gold_ore, 3, 7, 2, 32],
+      [B.redstone_ore, 6, 7, 2, 16],
+      [B.lapis_ore, 2, 6, 2, 32],
+      [B.diamond_ore, 2, 5, 2, 16],
+      [B.gravel, 4, 14, 10, 80],
+      [B.dirt, 4, 14, 20, 80],
+    ] : [
       [B.coal_ore, 18, 8, 5, 110],
       [B.iron_ore, 10, 6, 5, 64],
       [B.gold_ore, 2, 6, 5, 32],
@@ -250,6 +338,7 @@ export class WorldGen {
           if (ix >= 0 && iz >= 0 && ix < CHUNK && iz < CHUNK && iy > 0 && iy < HEIGHT) {
             const i = idx(ix, iy, iz);
             if (blocks[i] === B.stone) blocks[i] = ore;
+            else if (this.v2 && blocks[i] === B.deepslate && DEEP_ORE[ore]) blocks[i] = DEEP_ORE[ore];
           }
           x += rng() * 2 - 1;
           y += rng() * 2 - 1;
@@ -259,11 +348,148 @@ export class WorldGen {
     }
   }
 
+  // Version 2 extras, in the chunk's own blocks (no cross-chunk features).
+
+  // Blobs of granite, diorite and andesite in stone, tuff in deepslate.
+  placeRocks(blocks, rng, idx) {
+    for (const [rock, count, minY, maxY] of [[B.granite, 2, 20, 100], [B.diorite, 2, 20, 100], [B.andesite, 2, 20, 100], [B.tuff, 2, 2, 20]]) {
+      for (let n = 0; n < count; n++) {
+        const rad = 2 + rng() * 2.2;
+        const cx = rad + rng() * (CHUNK - 2 * rad), cz = rad + rng() * (CHUNK - 2 * rad), cy = minY + rng() * (maxY - minY);
+        for (let y = Math.floor(cy - rad); y <= cy + rad; y++) {
+          if (y < 1 || y >= HEIGHT) continue;
+          for (let z = Math.floor(cz - rad); z <= cz + rad; z++) for (let x = Math.floor(cx - rad); x <= cx + rad; x++) {
+            const dx = x + 0.5 - cx, dy = (y + 0.5 - cy) * 1.3, dz = z + 0.5 - cz;
+            if (dx * dx + dy * dy + dz * dz > rad * rad) continue;
+            const i = idx(x, y, z);
+            if (blocks[i] === B.stone || blocks[i] === B.deepslate) blocks[i] = rock;
+          }
+        }
+      }
+    }
+  }
+
+  // Emerald ore, only inside mountains.
+  placeEmeralds(blocks, rng, idx, ox, oz) {
+    for (let n = 0; n < 4; n++) {
+      const x = Math.floor(rng() * CHUNK), z = Math.floor(rng() * CHUNK);
+      const col = this.column(ox + x, oz + z);
+      const y = 40 + Math.floor(rng() * Math.max(1, col.height - 46));
+      if (!PEAKS.has(col.biome)) continue;
+      const i = idx(x, y, z);
+      if (blocks[i] === B.stone) blocks[i] = B.emerald_ore;
+    }
+  }
+
+  // Lush caves (moss, azaleas, glowing cave vines, spore blossoms), dripstone caves
+  // (dripstone blocks and spikes) and glow lichen on the walls of the rest.
+  decorateCaves(blocks, idx, ox, oz) {
+    const UP = CHUNK * CHUNK;
+    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const x = ox + lx, z = oz + lz;
+      const col = this.column(x, z);
+      const top = Math.min(col.height - 3, HEIGHT - 2);
+      for (let y = 2; y < top; y++) {
+        const i = idx(lx, y, lz);
+        if (blocks[i] !== 0) continue;
+        const below = blocks[i - UP], above = blocks[i + UP];
+        const r = hash3(x, y, z, this.seed + 31);
+        const r2 = hash3(x, y, z, this.seed + 32);
+        if (col.lush) {
+          if (CAVE_WALL.has(below)) {
+            blocks[i - UP] = B.moss_block;
+            if (r < 0.28) blocks[i] = B.moss_carpet;
+            else if (r < 0.32) blocks[i] = B.azalea;
+            else if (r < 0.345) blocks[i] = B.flowering_azalea;
+            else if (r < 0.45) blocks[i] = B.tall_grass;
+          } else if (CAVE_WALL.has(above)) {
+            blocks[i + UP] = B.moss_block;
+            if (r < 0.11) {
+              const len = 1 + Math.floor(r2 * 5);
+              for (let k = 0; k < len && y - k > 1 && blocks[i - k * UP] === 0; k++) {
+                blocks[i - k * UP] = hash3(x, y - k, z, this.seed + 33) < 0.35 ? B.cave_vines_lit : B.cave_vines;
+              }
+            } else if (r < 0.122) blocks[i] = B.spore_blossom;
+          }
+        } else if (col.drip) {
+          if (CAVE_WALL.has(below)) {
+            if (r2 < 0.7) blocks[i - UP] = B.dripstone_block;
+            if (r < 0.1) {
+              const len = 1 + Math.floor(r2 * 3);
+              for (let k = 0; k < len && y + k < top && blocks[i + k * UP] === 0; k++) blocks[i + k * UP] = B.pointed_dripstone;
+            }
+          } else if (CAVE_WALL.has(above)) {
+            if (r2 < 0.7) blocks[i + UP] = B.dripstone_block;
+            if (r < 0.14) {
+              const len = 1 + Math.floor(r2 * 3);
+              for (let k = 0; k < len && y - k > 1 && blocks[i - k * UP] === 0; k++) blocks[i - k * UP] = B.pointed_dripstone_down;
+            }
+          }
+        }
+        if (blocks[i] === 0 && y < 48 && r > 0.982) {
+          for (let f = 0; f < 4; f++) {
+            const nx = lx + DIRS[f][0], nz = lz + DIRS[f][1];
+            if (nx < 0 || nz < 0 || nx >= CHUNK || nz >= CHUNK) continue;
+            if (CAVE_WALL.has(blocks[idx(nx, y, nz)])) { blocks[i] = B.glow_lichen + f; break; }
+          }
+        }
+      }
+    }
+  }
+
+  // Amethyst geodes: smooth basalt, then calcite, then amethyst around a hollow lined
+  // with crystals. One region in five has one, deep underground.
+  placeGeodes(blocks, idx, ox, oz) {
+    const R = 6;
+    for (let rz = Math.floor((oz - R) / GEODE_REGION); rz <= Math.floor((oz + CHUNK + R) / GEODE_REGION); rz++) {
+      for (let rx = Math.floor((ox - R) / GEODE_REGION); rx <= Math.floor((ox + CHUNK + R) / GEODE_REGION); rx++) {
+        if (hash3(rx, 950, rz, this.seed) > 0.2) continue;
+        const gx = rx * GEODE_REGION + R + Math.floor(hash3(rx, 951, rz, this.seed) * (GEODE_REGION - 2 * R));
+        const gz = rz * GEODE_REGION + R + Math.floor(hash3(rx, 952, rz, this.seed) * (GEODE_REGION - 2 * R));
+        const gy = 9 + Math.floor(hash3(rx, 953, rz, this.seed) * 28);
+        if (gx + R < ox || gx - R >= ox + CHUNK || gz + R < oz || gz - R >= oz + CHUNK) continue;
+        if (this.column(gx, gz).height < gy + 12) continue;
+        const dist = (x, y, z) => Math.hypot(x - gx, (y - gy) * 1.1, z - gz) + (hash3(x, y, z, this.seed + 77) - 0.5) * 0.7;
+        const x0 = Math.max(ox, gx - R), x1 = Math.min(ox + CHUNK - 1, gx + R);
+        const z0 = Math.max(oz, gz - R), z1 = Math.min(oz + CHUNK - 1, gz + R);
+        for (let y = gy - R; y <= gy + R; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+          const d = dist(x, y, z);
+          if (d > 5.6 || y < 1) continue;
+          const i = idx(x - ox, y, z - oz);
+          const cur = blocks[i];
+          if (cur === B.bedrock) continue;
+          if (d <= 2.9) blocks[i] = 0;
+          else if (cur === 0 || cur === B.water || cur === B.lava) continue; // a cave through it stays open
+          else if (d <= 3.9) blocks[i] = hash3(x, y, z, this.seed + 78) < 0.12 ? B.budding_amethyst : B.amethyst_block;
+          else if (d <= 4.8) blocks[i] = B.calcite;
+          else blocks[i] = B.smooth_basalt;
+        }
+        // Crystals grow on the budding amethyst in the floor.
+        for (let y = gy - 3; y <= gy + 3; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+          const i = idx(x - ox, y, z - oz);
+          if (blocks[i] === 0 && dist(x, y, z) <= 2.9 && blocks[i - CHUNK * CHUNK] === B.budding_amethyst) blocks[i] = B.amethyst_cluster;
+        }
+      }
+    }
+  }
+
+  // A slope too steep for soil shows bare stone (mountain cliffs).
+  steep(x, z, col) {
+    if (col.mount < 0.12) return false;
+    const dx = this.column(x + 1, z).height - this.column(x - 1, z).height;
+    const dz = this.column(x, z + 1).height - this.column(x, z - 1).height;
+    return Math.abs(dx) + Math.abs(dz) > 7;
+  }
+
   treeTypeAt(x, z) {
     const col = this.column(x, z);
     if (col.height < SEA + 1 || col.height > HEIGHT - 20) return null;
     const r = hash3(x, 1, z, this.seed);
+    // Azalea trees grow over lush caves.
+    if (this.v2 && col.lush && r < 0.004 && [BIOME.PLAINS, BIOME.FOREST, BIOME.DAPPLED, BIOME.MEADOW, BIOME.TAIGA].includes(col.biome)) return 'azalea';
     switch (col.biome) {
+      case BIOME.GROVE: return r < 0.022 ? 'spruce' : null;
+      case BIOME.MEADOW: return r < 0.001 ? 'oak' : r < 0.002 ? 'birch' : null;
       case BIOME.PLAINS: return r < 0.0025 ? 'oak' : null;
       case BIOME.FOREST: return r < 0.03 ? 'oak' : r < 0.045 ? 'birch' : null;
       case BIOME.TAIGA: return r < 0.03 ? 'spruce' : null;
@@ -280,8 +506,13 @@ export class WorldGen {
     const col = this.column(x, z);
     const ground = this.surfaceBlocks(col)[0];
     if (ground !== B.grass && ground !== B.snowy_grass) return;
+    if (this.v2 && this.steep(x, z, col)) return;
     // Skip trees whose root a cave entrance has eaten.
     if (col.height > SEA && this.nEntrance(x * 0.012, z * 0.012) >= 0.55) return;
+    if (type === 'azalea') {
+      // Roots reach down toward the lush cave below.
+      for (let k = 0; k < 3; k++) put(x, col.height - k, z, B.rooted_dirt, true);
+    }
     if (type === 'fallen_poplar') this.fallenLog(x, col.height + 1, z, put);
     else growTree(type, x, col.height + 1, z, (k) => hash3(x, 20 + k, z, this.seed), put);
   }
@@ -590,6 +821,23 @@ export function growTree(type, x, y, z, rand, put, forceHeight = 0) {
       const [fx, fz] = [[0, 1], [-1, 0], [0, -1], [1, 0]][facing];
       const my = y + 1 + Math.floor(rand(4) * 2);
       put(x + fx, my, z + fz, (rand(5) < 0.4 ? B.large_shelf_mushroom : B.shelf_mushroom) + facing);
+    }
+  } else if (type === 'azalea') {
+    // A short, bent oak trunk under a wide flat crown of azalea leaves, some flowering.
+    const h = forceHeight || 3 + Math.floor(rand(0) * 2);
+    const leaf = (k) => (rand(k) < 0.3 ? B.flowering_azalea_leaves : B.azalea_leaves);
+    for (let cy = y + h - 1; cy <= y + h + 1; cy++) {
+      const radius = cy === y + h + 1 ? 1 : 2;
+      for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) {
+        const corner = Math.abs(dx) === radius && Math.abs(dz) === radius;
+        if (corner && rand(700 + cy * 31 + dx * 7 + dz) < 0.6) continue;
+        put(x + dx, cy, z + dz, leaf(800 + cy * 17 + dx * 5 + dz * 3));
+      }
+    }
+    const bend = rand(1) < 0.5 ? [1, 0] : [0, 1];
+    for (let i = 0; i < h; i++) {
+      const off = i >= h - 1 && rand(2) < 0.6 ? 1 : 0;
+      put(x + bend[0] * off, y + i, z + bend[1] * off, B.oak_log, true);
     }
   }
 }

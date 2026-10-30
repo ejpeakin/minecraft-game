@@ -51,9 +51,11 @@ function decodeMods(text) {
 }
 
 export class World {
-  constructor(seed, save = null) {
+  // genVersion: which terrain generator made this world (see GEN_VERSION in worldgen.js).
+  constructor(seed, save = null, genVersion = 1) {
     this.seed = seed | 0;
-    this.gen = new WorldGen(this.seed);
+    this.genVersion = genVersion;
+    this.gen = new WorldGen(this.seed, genVersion);
     this.chunks = new Map();
     this.mods = new Map();
     this.tiles = new Map();
@@ -229,6 +231,7 @@ export class World {
     const nb = BLOCKS[id];
     if (nb.sapling) this.growth.set(key, { at: this.clock + 60 + Math.random() * 120, kind: 'sapling' });
     if (nb.shelf === 'small') this.growth.set(key, { at: this.clock + 120 + Math.random() * 240, kind: 'shelf' });
+    if (nb.oxidizes) this.growth.set(key, { at: this.clock + 900 + Math.random() * 900, kind: 'oxidize' });
     if (nb.crop >= 0 && nb.crop < 7) {
       // Each stage takes 20-40 s on wet farmland, twice that on dry.
       const wet = BLOCKS[this.getBlock(x, y - 1, z)].wet;
@@ -299,7 +302,16 @@ export class World {
       const [fx, fz] = FACING_DIR[b.facing];
       const s = b.bed === 'foot' ? 1 : -1;
       ok = BLOCKS[this.getBlock(x + fx * s, y, z + fz * s)].baseId === b.partnerBase;
-    } else if (b.climbable) {
+    } else if (b.hangs) {
+      // Vines, roots, spore blossoms and dripstone hang from a solid block (or from more
+      // of themselves).
+      const above = this.getBlock(x, y + 1, z);
+      ok = !!SOLID[above] || BLOCKS[above].hangs === b.hangs;
+    } else if (b.stands) {
+      ok = !!SOLID[below] || BLOCKS[below].stands === b.stands;
+    } else if (b.candle) {
+      ok = !!SOLID[below];
+    } else if (b.climbable || b.wallPlant) {
       const [fx, fz] = FACING_DIR[b.facing];
       ok = !!OPAQUE[this.getBlock(x + fx, y, z + fz)];
     } else {
@@ -432,6 +444,9 @@ export class World {
       } else if (g.kind === 'shelf' && b.shelf === 'small') {
         this.growth.delete(key);
         this.setBlock(x, y, z, B.large_shelf_mushroom + b.facing);
+      } else if (g.kind === 'oxidize' && b.oxidizes) {
+        this.growth.delete(key);
+        this.setBlock(x, y, z, B[b.oxidizes]);
       } else if (g.kind === 'crop' && b.crop >= 0 && b.crop < 7) {
         this.growth.delete(key);
         this.hydrate(x, y - 1, z);
@@ -444,7 +459,7 @@ export class World {
   }
 
   growSapling(x, y, z, type) {
-    const tall = type === 'poplar' ? 12 : type === 'spruce' ? 10 : 7;
+    const tall = type === 'poplar' ? 12 : type === 'spruce' ? 10 : type === 'azalea' ? 6 : 7;
     for (let k = 1; k <= tall; k++) {
       const id = this.getBlock(x, y + k, z);
       if (id !== 0 && !BLOCKS[id].leaves) return false;
@@ -569,6 +584,6 @@ export function canPlantOn(id, below) {
   const b = BLOCKS[id];
   if (id === B.dead_bush) return below === B.sand;
   if (b.crop >= 0) return BLOCKS[below].farmland;
-  if (b.plant) return below === B.grass || below === B.dirt || below === B.snowy_grass;
+  if (b.plant) return below === B.grass || below === B.dirt || below === B.snowy_grass || below === B.moss_block || below === B.rooted_dirt;
   return true;
 }
