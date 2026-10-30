@@ -600,33 +600,40 @@ GEN.hay_bale_top = (t, r) => {
     t.set(x, y, mul(ring ? [176, 136, 44] : [212, 174, 62], 0.88 + r() * 0.2));
   }
 };
-// The red bed: top textures have the pillow at the top edge (the head end); the
-// mesher turns them to match the bed's direction. Sides fill the lower 9 pixels.
-const BED_RED = [176, 38, 38];
-GEN.red_bed_head_top = (t, r) => {
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const pillow = y >= 2 && y < 7 && x >= 2 && x < 14;
-    const edge = x === 0 || x === 15;
-    t.set(x, y, pillow ? mul([238, 238, 232], 0.94 + r() * 0.08) : edge ? mul(BED_RED, 0.75) : y < 9 ? mul([226, 222, 214], 0.92 + r() * 0.08) : mul(BED_RED, 0.9 + r() * 0.15));
-  }
-};
-GEN.red_bed_foot_top = (t, r) => {
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const edge = x === 0 || x === 15 || y === 15;
-    t.set(x, y, edge ? mul(BED_RED, 0.75) : mul(BED_RED, (y % 5 === 2 ? 0.85 : 1) * (0.9 + r() * 0.15)));
-  }
-};
-const bedSide = (head) => (t, r) => {
+// Beds in every wool color: top textures have the pillow at the top edge (the head
+// end); the mesher turns them to match the bed's direction. Sides fill the lower 9
+// pixels.
+const bedColor = (color) => (color === 'red' ? [176, 38, 38] : hex(WOOL[color]));
+const bedSide = (color, head) => (t, r) => {
+  const cover = bedColor(color);
   for (let y = 7; y < S; y++) for (let x = 0; x < S; x++) {
     let c;
-    if (y < 10) c = head && x < 6 ? [232, 230, 224] : BED_RED;
-    else if (y < 13) c = mul(BED_RED, 0.78);
+    if (y < 10) c = head && x < 6 ? [232, 230, 224] : cover;
+    else if (y < 13) c = mul(cover, 0.78);
     else c = (x < 3 || x > 12) ? mul(OAK, 0.8) : null;
     if (c) t.set(x, y, mul(c, 0.92 + r() * 0.12));
   }
 };
-GEN.red_bed_head_side = bedSide(true);
-GEN.red_bed_foot_side = bedSide(false);
+for (const [color] of COLORS) {
+  const cover = bedColor(color);
+  // Light covers get a darker trim so the edge still shows.
+  const trim = mul(cover, color === 'white' || color === 'light_gray' ? 0.82 : 0.75);
+  GEN[`${color}_bed_head_top`] = (t, r) => {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const pillow = y >= 2 && y < 7 && x >= 2 && x < 14;
+      const edge = x === 0 || x === 15;
+      t.set(x, y, pillow ? mul([238, 238, 232], 0.94 + r() * 0.08) : edge ? trim : y < 9 ? mul([226, 222, 214], 0.92 + r() * 0.08) : mul(cover, 0.9 + r() * 0.15));
+    }
+  };
+  GEN[`${color}_bed_foot_top`] = (t, r) => {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const edge = x === 0 || x === 15 || y === 15;
+      t.set(x, y, edge ? trim : mul(cover, (y % 5 === 2 ? 0.85 : 1) * (0.9 + r() * 0.15)));
+    }
+  };
+  GEN[`${color}_bed_head_side`] = bedSide(color, true);
+  GEN[`${color}_bed_foot_side`] = bedSide(color, false);
+}
 
 GEN.ladder = (t, r) => {
   for (let y = 0; y < S; y++) {
@@ -855,11 +862,6 @@ const ITEM_GEN = {
   },
   water_bucket(t) { bucketIcon(t, [52, 92, 224]); },
   lava_bucket(t) { bucketIcon(t, [230, 110, 30]); },
-  red_bed(t) {
-    fillPoly(t, [[1, 7], [15, 7], [15, 11], [1, 11]], (x, y) => (x < 5 && y < 9 ? [236, 236, 230] : y < 9 ? [196, 44, 44] : [150, 30, 30]));
-    for (const x of [1, 2, 13, 14]) for (let y = 11; y < 14; y++) t.set(x, y, mul(OAK, 0.8));
-    outline(t, [40, 20, 16]);
-  },
   explorer_map(t) { mapIcon(t, true); },
 };
 
@@ -939,6 +941,14 @@ for (const wood of Object.keys(WOOD_COLOR)) {
       const [cr, cg, cb, ca] = src.get(x * 2, (y % 8) * 2);
       if (ca) t.set(x + 4, y, [cr, cg, cb]);
     }
+  };
+}
+for (const [color] of COLORS) {
+  ITEM_GEN[`${color}_bed`] = (t) => {
+    const cover = mul(bedColor(color), 1.1);
+    fillPoly(t, [[1, 7], [15, 7], [15, 11], [1, 11]], (x, y) => (x < 5 && y < 9 ? [236, 236, 230] : y < 9 ? cover : mul(cover, 0.77)));
+    for (const x of [1, 2, 13, 14]) for (let y = 11; y < 14; y++) t.set(x, y, mul(OAK, 0.8));
+    outline(t, mul(cover, 0.25));
   };
 }
 for (const name of Object.keys(ITEMS)) {
