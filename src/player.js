@@ -16,7 +16,7 @@ const SNEAK = 1.31;
 const FLY = 10.9;
 
 // Damage that armor protects against (falls, drowning, starving and the void bypass it).
-const ARMOR_STOPS = new Set(['zombie', 'skeleton', 'spider', 'arrow', 'explosion', 'player', 'cactus', 'lava', 'goat']);
+const ARMOR_STOPS = new Set(['zombie', 'skeleton', 'spider', 'arrow', 'explosion', 'player', 'cactus', 'lava', 'goat', 'wolf']);
 
 export class Player {
   constructor(game) {
@@ -462,6 +462,7 @@ export class Player {
     if (this.targetMob && input.clicked[0] && this.attackCooldown <= 0) {
       this.attackCooldown = 0.3;
       const dmg = attackDamage(this.held) * (this.vy < -1 && !this.onGround ? 1.5 : 1);
+      this.lastHitMob = this.targetMob; // tame wolves join in
       if (this.targetMob.damage(dmg, this.x, this.z, this.sprinting ? 1.6 : 1)) {
         this.exhaustion += 0.1;
         if (toolOf(this.held)) this.inventory.damageHeld(toolOf(this.held).type === 'sword' ? 1 : 2);

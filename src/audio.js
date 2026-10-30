@@ -178,7 +178,9 @@ export class Audio {
     } else if (kind === 'spider') this.burst({ type: 'highpass', freq: sound === 'hurt' ? 2400 : 3200, q: 0.6, dur: 0.35, gain: 0.18 }, this.att(pos, listener));
     else if (kind === 'zombie') this.tone(sound === 'hurt' ? 160 : 95 + Math.random() * 20, sound === 'hurt' ? 0.25 : 0.7, { type: 'sawtooth', gain: 0.16, slide: 0.8, pos, listener });
     else if (kind === 'creeper' && sound === 'hurt') this.burst({ type: 'highpass', freq: 2000, q: 0.5, dur: 0.25, gain: 0.3 }, this.att(pos, listener));
-    else if (kind === 'goat') this.tone(sound === 'hurt' ? 640 : 520 + Math.random() * 80, 0.4, { type: 'sawtooth', gain: 0.07, slide: 0.85, pos, listener });
+    else if (kind === 'wolf') {
+      for (let i = 0; i < (sound === 'hurt' ? 1 : 2); i++) this.tone(sound === 'hurt' ? 900 : 620, 0.1, { type: 'square', gain: 0.07, slide: 0.7, pos, listener, delay: i * 0.18 });
+    } else if (kind === 'goat') this.tone(sound === 'hurt' ? 640 : 520 + Math.random() * 80, 0.4, { type: 'sawtooth', gain: 0.07, slide: 0.85, pos, listener });
     else if (kind === 'axolotl' && sound === 'idle') this.tone(1300, 0.12, { type: 'sine', gain: 0.06, slide: 1.4, pos, listener });
     else if (kind === 'squid' || kind === 'glow_squid') this.burst({ type: 'lowpass', freq: 500, q: 0.6, dur: 0.3, gain: 0.15 }, this.att(pos, listener));
   }

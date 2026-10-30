@@ -461,7 +461,7 @@ export class Game {
       fall: 'fell from a high place', lava: 'tried to swim in lava', drown: 'drowned', zombie: 'was slain by a Zombie',
       explosion: 'blew up', cactus: 'was pricked to death', starve: 'starved to death', void: 'fell out of the world',
       arrow: 'was shot by a Skeleton', skeleton: 'was shot by a Skeleton', spider: 'was slain by a Spider',
-      freeze: 'froze to death', dripstone: 'was impaled on a stalagmite', goat: 'was rammed by a Goat',
+      freeze: 'froze to death', dripstone: 'was impaled on a stalagmite', goat: 'was rammed by a Goat', wolf: 'was slain by a Wolf',
     };
     document.getElementById('death-cause').textContent = `You ${msgs[cause] ?? 'died'}.`;
     this.state = 'dead';

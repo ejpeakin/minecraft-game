@@ -7,6 +7,8 @@ import { ITEMS, blockDrops } from './items.js';
 import { moveEntity, fluidIn, touchesBlock, raycast } from './physics.js';
 import { HEIGHT, SEA, BIOME } from './worldgen.js';
 
+const WOLF_BIOMES = new Set([BIOME.FOREST, BIOME.TAIGA]);
+const MEAT = new Set(['porkchop', 'cooked_porkchop', 'beef', 'cooked_beef', 'mutton', 'cooked_mutton', 'chicken', 'cooked_chicken', 'rotten_flesh']);
 const GOAT_BIOMES = new Set([BIOME.SNOWY_SLOPES, BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS]);
 const GOAT_GROUND = new Set([B.snow_block, B.stone, B.packed_ice, B.calcite, B.snowy_grass]);
 import { mulberry32 } from './noise.js';
@@ -427,8 +429,24 @@ const eyes = (ctx, x, y, row, left, right, white = true) => {
   px(ctx, x + left, y + row, '#141414'); px(ctx, x + right, y + row, '#141414');
 };
 
-const PINK = [236, 156, 160];
-const SHEEP_SKIN = [222, 204, 188];
+const PINK = [240, 164, 166];
+const SHEEP_SKIN = [216, 186, 166];
+const WOLF = [214, 208, 200];
+// Minecraft-style mob skin: a little noise, lighter on top and darker underneath.
+const shaded = (base, amt = 0.04) => (ctx, f, x, y, w, h, r) => {
+  const k = f === 2 ? 1.06 : f === 3 ? 0.9 : 1;
+  noisyFill(ctx, x, y, w, h, [base[0] * k, base[1] * k, base[2] * k], amt, r);
+};
+// Wool: soft white with faint curls (tinted to the sheep's color in game).
+const fleece = (ctx, f, x, y, w, h, r) => {
+  noisyFill(ctx, x, y, w, h, [240, 240, 236], 0.025, r);
+  for (let i = 0; i < (w * h) / 6; i++) noisyFill(ctx, x + Math.floor(r() * w), y + Math.floor(r() * h), 1, 1, [220, 220, 214], 0.02, r);
+};
+// A wolf's coat: pale gray, darker along the back.
+const wolfCoat = (ctx, f, x, y, w, h, r) => {
+  noisyFill(ctx, x, y, w, h, f === 2 ? [176, 170, 160] : f === 3 ? [226, 222, 216] : WOLF, 0.04, r);
+  if (f !== 2 && f !== 3) noisyFill(ctx, x, y, w, Math.max(1, Math.floor(h / 3)), [184, 178, 168], 0.04, r);
+};
 const COW_BROWN = [92, 62, 42];
 const COW_WHITE = [232, 228, 220];
 const HEN_WHITE = [244, 244, 238];
@@ -462,37 +480,40 @@ const MOBS = {
     w: 0.9, h: 0.9, health: 10, speed: 1.6, hostile: false, food: 'wheat',
     drops: (r) => [{ id: 'porkchop', count: 1 + Math.floor(r() * 3) }],
     parts: [
-      { name: 'body', size: [10, 8, 16], at: [0, 10, 0], paint: blotched(PINK, [222, 140, 146], 3, 0.06) },
-      { id: 'head', name: 'head', size: [8, 8, 8], at: [0, 12, 7], off: [0, 0, 4], paint: withFront(solid(PINK, 0.06), (c, x, y) => {
-        px(c, x, y + 2, '#d88c92', 8, 1);
-        eyes(c, x, y, 3, 2, 5);
+      { name: 'body', size: [10, 8, 16], at: [0, 10, 0], paint: shaded(PINK, 0.035) },
+      { id: 'head', name: 'head', size: [8, 8, 8], at: [0, 12, 7], off: [0, 0, 4], paint: withFront(shaded(PINK, 0.035), (c, x, y) => {
+        // Minecraft's pig: white-and-black eyes either side of the snout.
+        px(c, x, y + 3, '#f6f6f6'); px(c, x + 1, y + 3, '#101010');
+        px(c, x + 6, y + 3, '#101010'); px(c, x + 7, y + 3, '#f6f6f6');
       }) },
-      { name: 'snout', parent: 'head', size: [4, 3, 1], at: [0, 12, 7], off: [0, -1.5, 8.5], paint: withFront(solid([226, 134, 144], 0.05), (c, x, y) => {
-        px(c, x, y, '#f0a6ae', 4, 1); px(c, x + 1, y + 1, '#8c3c46'); px(c, x + 2, y + 1, '#8c3c46');
+      { name: 'snout', parent: 'head', size: [4, 3, 1], at: [0, 12, 7], off: [0, -1.5, 8.5], paint: withFront(solid([246, 178, 184], 0.03), (c, x, y) => {
+        px(c, x, y, '#f9c4c8', 4, 1);
+        px(c, x, y + 1, '#8e4a52'); px(c, x + 3, y + 1, '#8e4a52');
       }) },
-      { name: 'leg', size: [4, 6, 4], at: [-3, 6, 5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 0 },
-      { name: 'leg', size: [4, 6, 4], at: [3, 6, 5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 1 },
-      { name: 'leg', size: [4, 6, 4], at: [-3, 6, -5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 1 },
-      { name: 'leg', size: [4, 6, 4], at: [3, 6, -5], off: [0, -3, 0], paint: solid([222, 142, 148]), leg: 0 },
+      { name: 'leg', size: [4, 6, 4], at: [-3, 6, 5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 0 },
+      { name: 'leg', size: [4, 6, 4], at: [3, 6, 5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 1 },
+      { name: 'leg', size: [4, 6, 4], at: [-3, 6, -5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 1 },
+      { name: 'leg', size: [4, 6, 4], at: [3, 6, -5], off: [0, -3, 0], paint: shaded([232, 148, 154], 0.035), leg: 0 },
     ],
   },
   sheep: {
     w: 0.9, h: 1.3, health: 8, speed: 1.5, hostile: false, food: 'wheat', wool: true,
     drops: (r, mob) => [...(mob?.sheared ? [] : [{ id: `${mob?.color ?? 'white'}_wool`, count: 1 }]), { id: 'mutton', count: 1 + Math.floor(r() * 2) }],
     parts: [
-      { id: 'leg0', name: 'leg', size: [4, 12, 4], at: [-3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 0 },
-      { id: 'leg1', name: 'leg', size: [4, 12, 4], at: [3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 1 },
-      { id: 'leg2', name: 'leg', size: [4, 12, 4], at: [-3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 1 },
-      { id: 'leg3', name: 'leg', size: [4, 12, 4], at: [3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN), leg: 0 },
-      { name: 'body', size: [8, 6, 16], at: [0, 15, 0], paint: solid(SHEEP_SKIN) },
-      { id: 'head', name: 'head', size: [6, 6, 8], at: [0, 18, 7], off: [0, 1, 4], paint: withFront(solid(SHEEP_SKIN, 0.05), (c, x, y) => {
-        eyes(c, x, y, 2, 1, 4);
-        px(c, x + 2, y + 4, '#b28c82', 2, 1); px(c, x + 2, y + 5, '#8c6a62', 2, 1);
+      { id: 'leg0', name: 'leg', size: [4, 12, 4], at: [-3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 0 },
+      { id: 'leg1', name: 'leg', size: [4, 12, 4], at: [3, 12, 5], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 1 },
+      { id: 'leg2', name: 'leg', size: [4, 12, 4], at: [-3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 1 },
+      { id: 'leg3', name: 'leg', size: [4, 12, 4], at: [3, 12, -6], off: [0, -6, 0], paint: solid(SHEEP_SKIN, 0.04), leg: 0 },
+      { name: 'body', size: [8, 6, 16], at: [0, 15, 0], paint: solid(SHEEP_SKIN, 0.04) },
+      // The face is tan skin; the wool cap covers the rest of the head.
+      { id: 'head', name: 'head', size: [6, 6, 8], at: [0, 18, 7], off: [0, 1, 4], paint: withFront(solid(SHEEP_SKIN, 0.04), (c, x, y) => {
+        px(c, x, y + 2, '#f2f2f2'); px(c, x + 1, y + 2, '#141414'); px(c, x + 4, y + 2, '#141414'); px(c, x + 5, y + 2, '#f2f2f2');
+        px(c, x + 2, y + 4, '#c89c90', 2, 1); px(c, x + 2, y + 5, '#a87a70', 2, 1);
       }) },
       // The fleece: shown until the sheep is sheared, tinted to the sheep's color.
-      { name: 'wool', wool: true, size: [11, 9, 19], at: [0, 15, 0], off: [0, 0.5, 0], paint: blotched([238, 238, 232], [214, 214, 208], 9, 0.04) },
-      { name: 'wool', wool: true, parent: 'head', size: [7, 6, 6], at: [0, 18, 7], off: [0, 2.5, 2.5], paint: blotched([238, 238, 232], [214, 214, 208], 9, 0.04) },
-      ...[0, 1, 2, 3].map((i) => ({ name: 'wool', wool: true, parent: `leg${i}`, size: [5, 5, 5], at: [[-3, 12, 5], [3, 12, 5], [-3, 12, -6], [3, 12, -6]][i], off: [0, -2.5, 0], paint: blotched([238, 238, 232], [214, 214, 208], 9, 0.04) })),
+      { name: 'wool', wool: true, size: [11, 9, 19], at: [0, 15, 0], off: [0, 0.5, 0], paint: fleece },
+      { name: 'wool', wool: true, parent: 'head', size: [7, 7, 7], at: [0, 18, 7], off: [0, 1, 3], paint: fleece },
+      ...[0, 1, 2, 3].map((i) => ({ name: 'wool', wool: true, parent: `leg${i}`, size: [5, 7, 5], at: [[-3, 12, 5], [3, 12, 5], [-3, 12, -6], [3, 12, -6]][i], off: [0, -3, 0], paint: fleece })),
     ],
   },
   cow: {
@@ -518,62 +539,41 @@ const MOBS = {
     w: 0.4, h: 0.7, health: 4, speed: 1.3, hostile: false, food: 'wheat_seeds',
     drops: (r) => [{ id: 'feather', count: Math.floor(r() * 3) }, { id: 'chicken', count: 1 }].filter((s) => s.count > 0),
     parts: [
-      { id: 'legL', name: 'leg', size: [1, 5, 1], at: [-1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.05), leg: 0 },
-      { id: 'legR', name: 'leg', size: [1, 5, 1], at: [1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.05), leg: 1 },
-      { name: 'foot', parent: 'legL', size: [3, 1, 3], at: [-1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.05) },
-      { name: 'foot', parent: 'legR', size: [3, 1, 3], at: [1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.05) },
-      { name: 'body', size: [6, 6, 8], at: [0, 8, 0], paint: blotched(HEN_WHITE, [226, 226, 220], 4, 0.04) },
-      { name: 'wing', size: [1, 4, 6], at: [-3.5, 11, 0], off: [0, -2, 0], paint: blotched(HEN_WHITE, [222, 222, 214], 4, 0.04), wing: 0 },
-      { name: 'wing', size: [1, 4, 6], at: [3.5, 11, 0], off: [0, -2, 0], paint: blotched(HEN_WHITE, [222, 222, 214], 4, 0.04), wing: 1 },
-      { id: 'head', name: 'head', size: [4, 6, 3], at: [0, 11, 3], off: [0, 1, 1.5], paint: withFront(solid(HEN_WHITE, 0.04), (c, x, y) => eyes(c, x, y, 1, 0, 3, false)) },
-      { name: 'beak', parent: 'head', size: [4, 2, 2], at: [0, 11, 3], off: [0, 1, 4], paint: solid([246, 186, 44], 0.05) },
-      { name: 'wattle', parent: 'head', size: [2, 2, 2], at: [0, 11, 3], off: [0, -1, 4], paint: solid([204, 32, 32], 0.05) },
+      { id: 'legL', name: 'leg', size: [1, 5, 1], at: [-1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.03), leg: 0 },
+      { id: 'legR', name: 'leg', size: [1, 5, 1], at: [1.5, 5, 0.5], off: [0, -2.5, 0], paint: solid(HEN_LEG, 0.03), leg: 1 },
+      { name: 'foot', parent: 'legL', size: [3, 1, 3], at: [-1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.03) },
+      { name: 'foot', parent: 'legR', size: [3, 1, 3], at: [1.5, 5, 0.5], off: [0, -4.5, 0.5], paint: solid(HEN_LEG, 0.03) },
+      { name: 'body', size: [6, 6, 8], at: [0, 8, 0], paint: shaded(HEN_WHITE, 0.025) },
+      { name: 'wing', size: [1, 4, 6], at: [-3.5, 11, 0], off: [0, -2, 0], paint: shaded([236, 236, 232], 0.03), wing: 0 },
+      { name: 'wing', size: [1, 4, 6], at: [3.5, 11, 0], off: [0, -2, 0], paint: shaded([236, 236, 232], 0.03), wing: 1 },
+      { id: 'head', name: 'head', size: [4, 6, 3], at: [0, 11, 3], off: [0, 1, 1.5], paint: withFront(shaded(HEN_WHITE, 0.025), (c, x, y) => {
+        px(c, x, y + 1, '#101010'); px(c, x + 3, y + 1, '#101010');
+      }) },
+      { name: 'beak', parent: 'head', size: [4, 2, 2], at: [0, 11, 3], off: [0, 1, 4], paint: shaded([250, 186, 40], 0.03) },
+      { name: 'wattle', parent: 'head', size: [2, 2, 2], at: [0, 11, 3], off: [0, -1, 4], paint: solid([214, 26, 26], 0.04) },
     ],
   },
-  // Caves & Cliffs. Goats live on the high mountains, jump far and sometimes ram you.
-  goat: {
-    w: 0.9, h: 1.3, health: 10, speed: 1.6, hostile: false, food: 'wheat', leaps: true,
+  // Wolves: wild packs in forests and taigas. Tame one with bones; it follows you, sits
+  // when you right-click it, and fights whatever you fight. Meat heals it.
+  wolf: {
+    w: 0.6, h: 0.85, health: 8, speed: 3.0, hostile: false, wolf: true, damage: 2,
     drops: () => [],
     parts: [
-      { name: 'leg', size: [3, 10, 3], at: [-2.5, 10, 5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 0 },
-      { name: 'leg', size: [3, 10, 3], at: [2.5, 10, 5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 1 },
-      { name: 'leg', size: [3, 10, 3], at: [-2.5, 10, -5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 1 },
-      { name: 'leg', size: [3, 10, 3], at: [2.5, 10, -5], off: [0, -5, 0], paint: solid(GOAT_WHITE), leg: 0 },
-      { name: 'body', size: [9, 9, 16], at: [0, 14.5, 0], paint: blotched(GOAT_WHITE, [212, 204, 190], 7, 0.05) },
-      { id: 'head', name: 'head', size: [5, 7, 8], at: [0, 19, 7], off: [0, 1, 4], paint: withFront(solid(GOAT_WHITE, 0.05), (c, x, y) => {
-        px(c, x, y + 2, '#c8a26a'); px(c, x + 4, y + 2, '#c8a26a'); px(c, x, y + 2, '#2a2016'); px(c, x + 4, y + 2, '#2a2016');
-        px(c, x + 1, y + 5, '#b8a890', 3, 1);
+      { id: 'legBL', name: 'leg', size: [2, 8, 2], at: [-1.5, 8, -4], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 0, hind: true },
+      { id: 'legBR', name: 'leg', size: [2, 8, 2], at: [1.5, 8, -4], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 1, hind: true },
+      { name: 'leg', size: [2, 8, 2], at: [-1.5, 8, 3], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 1 },
+      { name: 'leg', size: [2, 8, 2], at: [1.5, 8, 3], off: [0, -4, 0], paint: shaded(WOLF, 0.04), leg: 0 },
+      { id: 'body', name: 'body', size: [6, 6, 9], at: [0, 10, -1.5], paint: wolfCoat },
+      { name: 'mane', size: [8, 7, 6], at: [0, 10.5, 3], paint: wolfCoat },
+      { name: 'collar', size: [9, 1, 7], at: [0, 13, 3], paint: solid([190, 30, 30], 0.03), collar: true },
+      { id: 'head', name: 'head', size: [6, 6, 4], at: [0, 12.5, 6], off: [0, 0, 2], paint: withFront(shaded(WOLF, 0.04), (c, x, y) => {
+        px(c, x, y + 2, '#f0f0f0'); px(c, x + 1, y + 2, '#141414'); px(c, x + 4, y + 2, '#141414'); px(c, x + 5, y + 2, '#f0f0f0');
+        px(c, x, y + 1, '#8c8478', 2, 1); px(c, x + 4, y + 1, '#8c8478', 2, 1);
       }) },
-      { name: 'horn', parent: 'head', size: [2, 6, 2], at: [0, 19, 7], off: [-1.5, 7, 2], paint: solid([186, 172, 146], 0.05) },
-      { name: 'horn', parent: 'head', size: [2, 6, 2], at: [0, 19, 7], off: [1.5, 7, 2], paint: solid([186, 172, 146], 0.05) },
-      { name: 'beard', parent: 'head', size: [1, 4, 2], at: [0, 19, 7], off: [0, -4.5, 6], paint: solid([220, 214, 200], 0.05) },
-    ],
-  },
-  squid: {
-    w: 0.8, h: 1.0, health: 10, speed: 1.6, hostile: false, aquatic: true, dries: true,
-    drops: (r) => [{ id: 'ink_sac', count: 1 + Math.floor(r() * 3) }],
-    parts: squidParts(SQUID, [70, 92, 140], false),
-  },
-  glow_squid: {
-    w: 0.8, h: 1.0, health: 10, speed: 1.4, hostile: false, aquatic: true, dries: true, glows: true,
-    drops: (r) => [{ id: 'glow_ink_sac', count: 1 + Math.floor(r() * 3) }],
-    parts: squidParts(GLOW, [140, 250, 220], true),
-  },
-  // Axolotls swim in lush cave pools, in five colors (blue is very rare).
-  axolotl: {
-    w: 0.75, h: 0.42, health: 14, speed: 2.2, hostile: false, aquatic: true, food: 'glow_berries', tinted: true,
-    drops: () => [],
-    parts: [
-      { name: 'body', size: [8, 4, 10], at: [0, 3, 0], paint: blotched(AXOLOTL, [222, 140, 182], 4, 0.05) },
-      { id: 'head', name: 'head', size: [8, 5, 5], at: [0, 3.5, 5], off: [0, 0, 2.5], paint: withFront(solid(AXOLOTL, 0.05), (c, x, y) => {
-        px(c, x + 1, y + 2, '#101010'); px(c, x + 6, y + 2, '#101010'); px(c, x + 3, y + 4, '#c86a96', 2, 1);
-      }) },
-      ...[-1, 1].flatMap((side) => [0, 1, 2].map((k) => ({ name: 'gill', parent: 'head', size: [1, 3, 1], at: [0, 3.5, 5], off: [side * 4.5, 2 + k * 0.5 - 1, 1 + k], paint: solid([214, 70, 132], 0.06) }))),
-      { name: 'tail', size: [1, 4, 8], at: [0, 3.5, -5], off: [0, 0, -4], paint: solid([230, 150, 190], 0.05), tail: true },
-      { name: 'leg', size: [3, 1, 2], at: [-4.5, 1, 3], paint: solid(AXOLOTL), leg: 0 },
-      { name: 'leg', size: [3, 1, 2], at: [4.5, 1, 3], paint: solid(AXOLOTL), leg: 1 },
-      { name: 'leg', size: [3, 1, 2], at: [-4.5, 1, -3], paint: solid(AXOLOTL), leg: 1 },
-      { name: 'leg', size: [3, 1, 2], at: [4.5, 1, -3], paint: solid(AXOLOTL), leg: 0 },
+      { name: 'snout', parent: 'head', size: [3, 3, 4], at: [0, 12.5, 6], off: [0, -1.5, 6], paint: withFront(shaded([206, 200, 192], 0.04), (c, x, y) => px(c, x + 1, y, '#202020')) },
+      { name: 'ear', parent: 'head', size: [2, 2, 1], at: [0, 12.5, 6], off: [-2, 4, 1], paint: shaded([150, 142, 132], 0.04) },
+      { name: 'ear', parent: 'head', size: [2, 2, 1], at: [0, 12.5, 6], off: [2, 4, 1], paint: shaded([150, 142, 132], 0.04) },
+      { name: 'tail', size: [2, 8, 2], at: [0, 12, -6], off: [0, -4, 0], paint: shaded([196, 190, 182], 0.04), wolfTail: true },
     ],
   },
   // Other players in multiplayer (never spawned as a mob).
@@ -729,6 +729,9 @@ export class Mob extends Entity {
     this.baby = baby;
     this.growTime = opts.growTime ?? (baby ? 240 : 0);
     this.color = kind === 'sheep' ? opts.color ?? randomSheepColor() : kind === 'axolotl' ? opts.color ?? randomAxolotl() : null;
+    this.tamed = !!opts.tamed;
+    this.sitting = !!opts.sitting;
+    this.wolfTarget = null;
     this.ramTimer = 20 + Math.random() * 40;
     this.ram = 0; // > 0 while a goat lowers its head and charges
     this.swimGoal = null;
@@ -776,6 +779,7 @@ export class Mob extends Entity {
     return {
       kind: this.kind, x: +this.x.toFixed(2), y: +this.y.toFixed(2), z: +this.z.toFixed(2), yaw: +this.yaw.toFixed(2), health: this.health,
       baby: this.baby, growTime: Math.round(this.growTime), color: this.color, sheared: this.sheared, breedCooldown: Math.round(this.breedCooldown),
+      tamed: this.tamed || undefined, sitting: this.sitting || undefined,
     };
   }
 
@@ -797,6 +801,33 @@ export class Mob extends Entity {
       for (let i = 0; i < n; i++) game.entities.dropItem(this.x, this.y + this.h * 0.8, this.z, { id: `${this.color}_wool`, count: 1 });
       if (survival && player.inventory.damageHeld(1)) game.audio.block('glass', 'break');
       game.audio.block('cloth', 'break', this, player);
+      return true;
+    }
+    if (this.def.wolf) {
+      // Bones tame a wild wolf (one try in three); a tame one eats meat to heal, and
+      // otherwise sits or stands up.
+      if (!this.tamed && id === 'bone' && this.angry <= 0) {
+        use();
+        if (Math.random() < 1 / 3) {
+          this.tamed = true;
+          this.sitting = true;
+          this.health = 20;
+          this.hearts(7);
+          game.ui.toast('Tamed! Your wolf follows you. Right-click it to make it sit or stand.');
+        } else {
+          game.particles.burst(this.x - 0.5, this.y + 0.6, this.z - 0.5, [0.45, 0.45, 0.45], 6);
+        }
+        return true;
+      }
+      if (!this.tamed) return false;
+      if (MEAT.has(id) && this.health < 20) {
+        this.health = Math.min(20, this.health + ITEMS[id].food.hunger);
+        use();
+        this.hearts(2);
+        return true;
+      }
+      this.sitting = !this.sitting;
+      this.wolfTarget = null;
       return true;
     }
     const dye = ITEMS[id]?.dye;
@@ -877,8 +908,12 @@ export class Mob extends Entity {
     this.vx = (dx / d) * 6 * knock;
     this.vz = (dz / d) * 6 * knock;
     this.vy = 5 * Math.min(1, knock);
-    this.fleeTime = this.hostile ? 0 : 5;
+    this.fleeTime = this.hostile || this.def.wolf ? 0 : 5;
     if (this.hostile) this.angry = 15; // a spider you hit stays angry even in daylight
+    if (this.def.wolf && !this.tamed) {
+      // Hit one wild wolf and the whole pack turns on you.
+      for (const m of this.game.entities.mobs) if (m.def.wolf && !m.tamed && this.distTo(m) < 16) m.angry = 30;
+    }
     this.game.audio.mob(this.kind, 'hurt', this, this.game.player);
     if (this.health <= 0) this.deathTime = 0.0001;
     return true;
@@ -918,7 +953,10 @@ export class Mob extends Entity {
       if (game.sky.daylight > 0.6 && l.sky >= 12) canTarget = false;
     }
     const pd = this.distTo(player);
-    if (canTarget && pd < 18) {
+    const wolf = this.def.wolf ? this.wolfMind(dt, player, pd) : null;
+    if (wolf) {
+      moveX = wolf.x; moveZ = wolf.z; speed = wolf.speed;
+    } else if (canTarget && pd < 18) {
       const dx = player.x - this.x;
       const dz = player.z - this.z;
       this.targetYaw = Math.atan2(dx, dz);
@@ -964,6 +1002,7 @@ export class Mob extends Entity {
       if (this.def.damage && pd < 1.6 && Math.abs(player.y - this.y) < 1.6 && this.attackCooldown <= 0) {
         this.attackCooldown = 1;
         player.damage(this.def.damage, { x: this.x, z: this.z, cause: this.kind });
+        player.lastAttackerMob = this;
       }
     } else {
       if (this.def.explodes) this.fuse = Math.max(0, this.fuse - dt);
@@ -1087,6 +1126,58 @@ export class Mob extends Entity {
     }
     const sp = Math.hypot(this.vx, this.vz);
     this.syncMesh(dt, sp);
+  }
+
+  // Wolves: an angry wild one chases the player; a tame one fights whatever its owner
+  // fights (or whatever attacks them), follows, or sits. Returns the movement, or null
+  // for a calm wild wolf, which wanders like any animal.
+  wolfMind(dt, player, pd) {
+    let target = null;
+    if (this.tamed) {
+      const t = this.wolfTarget;
+      if (t && (t.dead || t.deathTime > 0 || this.distTo(t) > 20)) this.wolfTarget = null;
+      if (!this.wolfTarget && !this.sitting) {
+        for (const m of [player.lastHitMob, player.lastAttackerMob]) {
+          if (m && m !== this && !m.dead && m.deathTime <= 0 && !(m.def.wolf && m.tamed) && this.distTo(m) < 16) { this.wolfTarget = m; break; }
+        }
+      }
+      target = this.sitting ? null : this.wolfTarget;
+    } else if (this.angry > 0 && !player.dead && player.mode === 'survival' && pd < 24) {
+      target = player;
+    } else {
+      return null;
+    }
+    if (target) {
+      const dx = target.x - this.x, dz = target.z - this.z;
+      const d = Math.hypot(dx, dz) || 1;
+      this.targetYaw = Math.atan2(dx, dz);
+      if (d < 1.4 && Math.abs(target.y - this.y) < 1.6 && this.attackCooldown <= 0) {
+        this.attackCooldown = 1;
+        if (target === player) player.damage(this.def.damage, { x: this.x, z: this.z, cause: 'wolf' });
+        else if (target.damage(4, this.x, this.z)) this.game.audio.mob('wolf', 'idle', this, player);
+      }
+      return d > 0.9 ? { x: dx / d, z: dz / d, speed: this.def.speed * 1.3 } : { x: 0, z: 0, speed: 0 };
+    }
+    if (this.sitting) return { x: 0, z: 0, speed: 0 };
+    // Follow the owner; catch up by teleporting when left far behind.
+    if (pd > 14 && !player.dead) {
+      const world = this.game.world;
+      for (let k = 0; k < 8; k++) {
+        const x = Math.floor(player.x + (Math.random() - 0.5) * 4), z = Math.floor(player.z + (Math.random() - 0.5) * 4);
+        const y = Math.floor(player.y);
+        if (SOLID[world.getBlock(x, y - 1, z)] && !SOLID[world.getBlock(x, y, z)] && !SOLID[world.getBlock(x, y + 1, z)]) {
+          this.x = x + 0.5; this.y = y; this.z = z + 0.5; this.vx = this.vy = this.vz = 0;
+          break;
+        }
+      }
+    }
+    if (pd > 3.5) {
+      const dx = player.x - this.x, dz = player.z - this.z;
+      const d = Math.hypot(dx, dz) || 1;
+      this.targetYaw = Math.atan2(dx, dz);
+      return { x: dx / d, z: dz / d, speed: this.def.speed * (pd > 7 ? 1.2 : 0.8) };
+    }
+    return { x: 0, z: 0, speed: 0 };
   }
 
   // Goats leap now and then, and every so often pick a player to ram.
@@ -1226,6 +1317,13 @@ export class Mob extends Entity {
         pivot.rotation.z = Math.sin(a) * open;
       }
       if (spec.tail) pivot.rotation.y = Math.sin(this.age * (this.inWater ? 7 : 3)) * 0.35;
+      if (spec.collar) pivot.visible = this.tamed;
+      if (spec.wolfTail) {
+        // A tame wolf's tail shows its health: the higher, the healthier.
+        pivot.rotation.x = this.angry > 0 ? 1.4 : this.tamed ? 0.5 + (this.health / 20) * 0.9 : 0.6;
+        pivot.rotation.z = this.tamed && sp > 0.2 ? Math.sin(this.age * 14) * 0.3 : 0;
+      }
+      if (spec.hind) pivot.rotation.x = this.sitting ? -1.4 : pivot.rotation.x;
       if (spec.name === 'head' && !spec.parent && this.ram > 1.2) { pivot.rotation.x = 0.7; continue; }
       if (spec.name === 'head' && !spec.parent) {
         pivot.rotation.y = this.headYaw;
@@ -1234,7 +1332,7 @@ export class Mob extends Entity {
         pivot.scale.setScalar(this.baby ? 1.5 : 1);
       }
     }
-    this.mesh.position.set(this.x, this.y, this.z);
+    this.mesh.position.set(this.x, this.y - (this.sitting ? 0.2 : 0), this.z);
     this.mesh.rotation.y = this.yaw;
     const swell = this.fuse > 0 ? 1 + this.fuse * 0.12 : 1;
     const size = this.baby ? 0.5 : 1;
@@ -1453,8 +1551,10 @@ export class EntityManager {
           return ground === B.grass || (GOAT_GROUND.has(ground) && GOAT_BIOMES.has(world.gen.column(x, z).biome));
         }, true);
         if (spot) {
-          const goats = GOAT_BIOMES.has(world.gen.column(spot.x, spot.z).biome);
-          const kind = goats ? 'goat' : ['pig', 'sheep', 'cow', 'chicken'][Math.floor(Math.random() * 4)];
+          const biome = world.gen.column(spot.x, spot.z).biome;
+          const goats = GOAT_BIOMES.has(biome);
+          const wolves = WOLF_BIOMES.has(biome) && Math.random() < 0.25;
+          const kind = goats ? 'goat' : wolves ? 'wolf' : ['pig', 'sheep', 'cow', 'chicken'][Math.floor(Math.random() * 4)];
           const n = 2 + Math.floor(Math.random() * 3);
           for (let i = 0; i < n; i++) {
             const sx = spot.x + Math.floor((Math.random() - 0.5) * 4);
