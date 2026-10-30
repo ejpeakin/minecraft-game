@@ -87,6 +87,9 @@ can, and click outside the window to throw the held stack.
   chickens), and babies grow up. Milk cows with a bucket; shear sheep for wool, dye them,
   and watch them eat grass to grow it back; chickens lay eggs and flutter down instead of
   falling. Animals are saved with the world.
+- **Wolves**: packs in forests and taigas that turn on you if you hit one. Tame one with
+  bones: it gets a red collar, follows you, sits when right-clicked, fights what you
+  fight and eats meat to heal.
 - **Monsters**: zombies and skeletons (both burn in sunlight; skeletons keep their
   distance and shoot arrows), spiders (they climb walls, leap, and leave you alone in
   daylight unless you hit them) and creepers (they swell, hiss and explode) wherever
@@ -98,6 +101,22 @@ can, and click outside the window to throw the held stack.
 - **Creative**: flying, instant breaking and a searchable palette of every item.
 - **Saving**: worlds are stored in `localStorage` as edits on top of the seed. Several
   worlds can be kept; the game autosaves every 30 seconds, on pause and when you leave.
+
+### Caves & Cliffs (new worlds)
+
+- **Underground**: a deepslate layer, tuff, granite, diorite and andesite; copper,
+  redstone, lapis and emerald ores (each with a deepslate form); big caverns with
+  underground lakes and lava at the bottom.
+- **Cave biomes**: lush caves (moss, azaleas, glowing cave vines with glow berries, spore
+  blossoms), dripstone caves with stalactites and stalagmites, amethyst geodes and glow
+  lichen.
+- **Mountains**: jagged, frozen and stony peaks, snowy slopes with powder snow (leather
+  boots let you walk on it), groves, meadows and bare stone cliffs.
+- **Mobs**: goats that leap and ram, squid, glow squid and axolotls.
+- **Items**: copper that weathers green (scrape it with an axe), candles in 17 colors,
+  a spyglass, lightning rod, tinted glass, all 16 dyes and beds in every color.
+
+Worlds made before this update keep their original terrain.
 
 ### Wilderness Bound
 
