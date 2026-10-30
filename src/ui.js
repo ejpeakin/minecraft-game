@@ -8,6 +8,8 @@ import { buildLogo } from './logo.js';
 import { BIOME_NAME, CHUNK, HEIGHT } from './worldgen.js';
 import { chunkKey } from './world.js';
 import { DEFAULT_SERVER } from './net.js';
+import * as THREE from './three.js';
+import { buildFigure } from './entities.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, parent) => {
@@ -193,6 +195,7 @@ export class UI {
     if (p.eating > 0) eatBar.firstElementChild.style.width = `${Math.min(1, p.eating / 1.6) * 100}%`;
     if (!$('debug').hidden) this.updateDebug();
     if (this.screen === 'inventory' && this.container?.kind === 'furnace') this.refresh();
+    if (this.screen === 'inventory') this.drawPlayerModel();
   }
 
   updateDebug() {
@@ -597,7 +600,7 @@ export class UI {
       return;
     }
 
-    const top = el('div', 'inv-top', panel);
+    const top = el('div', `inv-top${kind === 'inventory' ? ' survival' : ''}`, panel);
     if (kind === 'inventory' || kind === 'crafting') {
       if (kind === 'inventory') {
         const armor = el('div', 'grid armor-grid', top);
@@ -606,7 +609,7 @@ export class UI {
           a.style.setProperty('--piece', `url(${this.bank.iconUrl(`iron_${['helmet', 'chestplate', 'leggings', 'boots'][i]}`)})`);
         }
         const prev = el('div', 'player-preview', top);
-        prev.appendChild(this.playerPortrait());
+        prev.appendChild(this.playerModel() ?? this.playerPortrait());
       }
       const craft = el('div', 'craft', top);
       const wrap = el('div', '', craft);
@@ -649,6 +652,53 @@ export class UI {
     for (let i = 9; i < 36; i++) this.slot(main, inv, i, { player: true });
     const hot = el('div', 'grid hot-grid', panel);
     for (let i = 0; i < 9; i++) this.slot(hot, inv, i, { player: true });
+  }
+
+  // The 3D player in the inventory screen, turning to look at the mouse like Minecraft's.
+  // A small renderer of its own, made the first time the inventory opens; null if WebGL
+  // isn't available there (then the flat portrait is shown).
+  playerModel() {
+    if (this.preview === undefined) {
+      this.preview = null;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'player-model';
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'low-power' });
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        renderer.setSize(100, 144, false);
+        renderer.setClearColor(0x000000, 0);
+        const scene = new THREE.Scene();
+        const figure = buildFigure('player');
+        figure.material.color.setRGB(1, 1, 1);
+        scene.add(figure.mesh);
+        const camera = new THREE.OrthographicCamera(-0.74, 0.74, 1.07, -1.07, 0.1, 20);
+        camera.position.set(0, 1.0, 6);
+        camera.lookAt(0, 1.0, 0);
+        this.preview = { canvas, renderer, scene, figure, camera };
+      } catch {
+        this.preview = null;
+      }
+    }
+    return this.preview?.canvas ?? null;
+  }
+
+  drawPlayerModel() {
+    const pv = this.preview;
+    if (!pv || !pv.canvas.isConnected) return;
+    const r = pv.canvas.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height * 0.22;
+    // Minecraft's amounts: the body turns up to ~30 degrees, the head as far again.
+    const turn = Math.atan(((this.mouseX ?? cx) - cx) / 80) * 0.35;
+    const nod = Math.atan(((this.mouseY ?? cy) - cy) / 80) * 0.35;
+    pv.figure.mesh.rotation.y = turn;
+    for (const { spec, pivot } of pv.figure.parts) {
+      if (spec.name === 'head') {
+        pivot.rotation.y = turn;
+        pivot.rotation.x = nod;
+      }
+      if (spec.swing !== undefined) pivot.rotation.z = (spec.swing ? -1 : 1) * 0.05;
+    }
+    pv.renderer.render(pv.scene, pv.camera);
   }
 
   // Small pixel-art figure for the inventory screen.
@@ -736,6 +786,8 @@ export class UI {
       this.showTooltip(slotEl, e);
     });
     window.addEventListener('mousemove', (e) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
       const c = $('cursor-stack');
       c.style.left = `${e.clientX}px`;
       c.style.top = `${e.clientY}px`;
