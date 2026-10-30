@@ -18,6 +18,7 @@ export const SHAPE = {
   NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, CACTUS: 4, LIQUID: 5,
   SLAB: 6, STAIRS: 7, CUSHION: 8, BED: 9, FENCE: 10, CAMPFIRE: 11, SHELF: 12,
   DOOR: 13, TRAPDOOR: 14, LADDER: 15, PANE: 16, GATE: 17, CARPET: 18, FARMLAND: 19,
+  ROD: 20, AZALEA: 21,
 };
 export const PASS = { OPAQUE: 0, CUTOUT: 1, WATER: 2 };
 
@@ -194,6 +195,92 @@ for (const [color, label] of COLORS) {
   def(`${color}_bed_head`, { label: `${label} Bed`, tex: { top: `${color}_bed_head_top`, bottom: 'oak_planks', side: `${color}_bed_head_side` }, ...BED, bed: 'head', noItem: true, drop: null, color });
 }
 
+// --- Caves & Cliffs ------------------------------------------------------------------
+// Deepslate fills the bottom of the world; new stones, ores, geodes, dripstone and lush
+// caves; copper that turns green over time; candles; powder snow on the high slopes.
+const DEEP = { ...STONE, hardness: 3 };
+def('deepslate', { label: 'Deepslate', tex: { top: 'deepslate_top', bottom: 'deepslate_top', side: 'deepslate' }, ...DEEP, drop: 'cobbled_deepslate' });
+def('cobbled_deepslate', { label: 'Cobbled Deepslate', tex: 'cobbled_deepslate', ...DEEP, hardness: 3.5 });
+def('polished_deepslate', { label: 'Polished Deepslate', tex: 'polished_deepslate', ...DEEP, hardness: 3.5 });
+def('deepslate_bricks', { label: 'Deepslate Bricks', tex: 'deepslate_bricks', ...DEEP, hardness: 3.5 });
+def('deepslate_tiles', { label: 'Deepslate Tiles', tex: 'deepslate_tiles', ...DEEP, hardness: 3.5 });
+def('tuff', { label: 'Tuff', tex: 'tuff', ...STONE, hardness: 1.5 });
+def('calcite', { label: 'Calcite', tex: 'calcite', ...STONE, hardness: 0.75 });
+def('smooth_basalt', { label: 'Smooth Basalt', tex: 'smooth_basalt', ...STONE, hardness: 1.25 });
+for (const [rock, label] of [['granite', 'Granite'], ['diorite', 'Diorite'], ['andesite', 'Andesite']]) {
+  def(rock, { label, tex: rock, ...STONE, hardness: 1.5 });
+  def(`polished_${rock}`, { label: `Polished ${label}`, tex: `polished_${rock}`, ...STONE, hardness: 1.5 });
+}
+// Ores, each with a deepslate form that drops the same thing.
+const ORES = [
+  ['coal', 'Coal', { drop: 'coal', level: 0 }],
+  ['iron', 'Iron', { level: 1 }],
+  ['gold', 'Gold', { level: 2 }],
+  ['diamond', 'Diamond', { level: 3, drop: 'diamond' }],
+  ['copper', 'Copper', { level: 1, drop: 'raw_copper', dropCount: 2, dropMax: 5 }],
+  ['redstone', 'Redstone', { level: 2, drop: 'redstone', dropCount: 4, dropMax: 5 }],
+  ['lapis', 'Lapis Lazuli', { level: 1, drop: 'lapis_lazuli', dropCount: 4, dropMax: 8 }],
+  ['emerald', 'Emerald', { level: 2, drop: 'emerald' }],
+];
+for (const [ore, label, props] of ORES) {
+  if (!['coal', 'iron', 'gold', 'diamond'].includes(ore)) def(`${ore}_ore`, { label: `${label} Ore`, tex: `${ore}_ore`, hardness: 3, ...STONE, ...props });
+  def(`deepslate_${ore}_ore`, { label: `Deepslate ${label} Ore`, tex: `deepslate_${ore}_ore`, hardness: 4.5, ...STONE, ...props });
+}
+def('lapis_block', { label: 'Block of Lapis Lazuli', tex: 'lapis_block', hardness: 3, ...STONE, level: 1 });
+def('redstone_block', { label: 'Block of Redstone', tex: 'redstone_block', hardness: 5, ...STONE });
+def('emerald_block', { label: 'Block of Emerald', tex: 'emerald_block', hardness: 5, ...STONE, level: 2 });
+def('raw_copper_block', { label: 'Block of Raw Copper', tex: 'raw_copper_block', hardness: 5, ...STONE, level: 1 });
+// Copper weathers from orange to green, a stage every so often; an axe scrapes a stage
+// back off.
+const COPPER = [['', ''], ['exposed_', 'Exposed '], ['weathered_', 'Weathered '], ['oxidized_', 'Oxidized ']];
+COPPER.forEach(([stage, label], i) => {
+  const next = COPPER[i + 1]?.[0];
+  const prev = i > 0 ? COPPER[i - 1][0] : null;
+  const copper = { hardness: 3, ...STONE, level: 1, sound: 'metal' };
+  def(`${stage}copper_block`, {
+    label: i ? `${label}Copper` : 'Block of Copper', tex: `${stage}copper`, ...copper,
+    oxidizes: next !== undefined ? `${next}copper_block` : null, scrapes: prev !== null ? `${prev}copper_block` : null, interact: prev !== null ? 'scrape' : null,
+  });
+  def(`${stage}cut_copper`, {
+    label: `${label}Cut Copper`, tex: `${stage}cut_copper`, ...copper,
+    oxidizes: next !== undefined ? `${next}cut_copper` : null, scrapes: prev !== null ? `${prev}cut_copper` : null, interact: prev !== null ? 'scrape' : null,
+  });
+});
+def('lightning_rod', { label: 'Lightning Rod', tex: 'lightning_rod', shape: 'rod', ...PARTIAL, pass: 'cutout', hardness: 3, ...STONE, sound: 'metal' });
+// Amethyst geodes.
+def('amethyst_block', { label: 'Block of Amethyst', tex: 'amethyst_block', hardness: 1.5, ...STONE, sound: 'glass' });
+def('budding_amethyst', { label: 'Budding Amethyst', tex: 'budding_amethyst', hardness: 1.5, ...STONE, sound: 'glass', drop: null });
+def('amethyst_cluster', { label: 'Amethyst Cluster', tex: 'amethyst_cluster', ...PLANT, plant: false, washable: false, still: true, emit: 5, hardness: 1.5, sound: 'glass', drop: 'amethyst_shard', dropCount: 4 });
+def('tinted_glass', { label: 'Tinted Glass', tex: 'tinted_glass', opaque: false, pass: 'cutout', filter: 15, hardness: 0.3, sound: 'glass', cullSelf: true });
+// Dripstone caves.
+def('dripstone_block', { label: 'Dripstone Block', tex: 'dripstone_block', ...STONE, hardness: 1.5 });
+const DRIP = { label: 'Pointed Dripstone', ...PLANT, plant: false, washable: false, still: true, hardness: 1.5, sound: 'stone', tool: 'pickaxe', drop: 'pointed_dripstone' };
+def('pointed_dripstone', { ...DRIP, tex: 'pointed_dripstone_up', stands: 'drip', pointed: true });
+def('pointed_dripstone_down', { ...DRIP, tex: 'pointed_dripstone_down', hangs: 'drip', noItem: true });
+// Lush caves.
+def('moss_block', { label: 'Moss Block', tex: 'moss_block', hardness: 0.1, sound: 'grass', tool: 'hoe' });
+def('moss_carpet', { label: 'Moss Carpet', tex: 'moss_block', shape: 'carpet', ...PARTIAL, hardness: 0.1, sound: 'grass', carpet: true });
+def('rooted_dirt', { label: 'Rooted Dirt', tex: 'rooted_dirt', hardness: 0.5, sound: 'gravel', tool: 'shovel' });
+def('hanging_roots', { label: 'Hanging Roots', tex: 'hanging_roots', ...PLANT, plant: false, still: true, hangs: 'roots', replaceable: true });
+def('azalea', { label: 'Azalea', tex: { top: 'azalea_top', bottom: 'azalea_bottom', side: 'azalea_side' }, shape: 'azalea', ...PARTIAL, pass: 'cutout', hardness: 0, sound: 'grass', plant: true, sapling: 'azalea' });
+def('flowering_azalea', { label: 'Flowering Azalea', tex: { top: 'flowering_azalea_top', bottom: 'azalea_bottom', side: 'flowering_azalea_side' }, shape: 'azalea', ...PARTIAL, pass: 'cutout', hardness: 0, sound: 'grass', plant: true, sapling: 'azalea' });
+def('azalea_leaves', { label: 'Azalea Leaves', tex: 'azalea_leaves', opaque: false, pass: 'cutout', filter: 1, hardness: 0.2, sound: 'grass', leaves: 'azalea' });
+def('flowering_azalea_leaves', { label: 'Flowering Azalea Leaves', tex: 'flowering_azalea_leaves', opaque: false, pass: 'cutout', filter: 1, hardness: 0.2, sound: 'grass', leaves: 'azalea' });
+def('cave_vines', { label: 'Cave Vines', tex: 'cave_vines', ...PLANT, plant: false, still: true, hangs: 'vine', noItem: true, drop: null, climbable: true });
+def('cave_vines_lit', { label: 'Cave Vines', tex: 'cave_vines_lit', ...PLANT, plant: false, still: true, hangs: 'vine', noItem: true, drop: 'glow_berries', emit: 14, interact: 'berries', climbable: true });
+def('spore_blossom', { label: 'Spore Blossom', tex: 'spore_blossom', ...PLANT, plant: false, still: true, hangs: 'blossom' });
+def('glow_lichen', { label: 'Glow Lichen', tex: 'glow_lichen', shape: 'ladder', solid: false, ...PARTIAL, pass: 'cutout', hardness: 0.2, sound: 'grass', variants: 'facing', emit: 7, replaceable: true, wallPlant: true, drop: null, tool: 'shears' });
+// High mountains.
+def('powder_snow', { label: 'Powder Snow', tex: 'powder_snow', solid: false, hardness: 0.25, sound: 'cloth', tool: 'shovel', drop: null, powder: true });
+def('packed_ice', { label: 'Packed Ice', tex: 'packed_ice', hardness: 0.5, sound: 'glass', tool: 'pickaxe', slippery: true, drop: null });
+// Candles: right-click with flint and steel to light, right-click again to put out.
+const CANDLES = [['', 'Candle'], ...COLORS.map(([c, l]) => [`${c}_`, `${l} Candle`])];
+for (const [color, label] of CANDLES) {
+  const candle = { label, shape: 'torch', solid: false, ...PARTIAL, pass: 'cutout', hardness: 0.1, sound: 'cloth', interact: 'candle', washable: true };
+  def(`${color}candle`, { ...candle, tex: `${color}candle`, candle: 'unlit' });
+  def(`${color}candle_lit`, { ...candle, tex: `${color}candle_lit`, candle: 'lit', emit: 12, noItem: true, drop: `${color}candle` });
+}
+
 // Expand variant blocks into several ids. 'facing' → 4 ids (base faces +z);
 // 'axis' → 3 ids (0 = y, 1 = x, 2 = z); 'door' and 'gate' → 8 (facing + 4 * open);
 // 'trapdoor' → 16 (facing + 4 * open + 8 * top half).
@@ -256,6 +343,16 @@ for (const d of DEFS) {
       climbable: d.climbable ?? false,
       upside: d.upside ?? false,
       bed: d.bed ?? null,
+      dropMax: d.dropMax ?? d.dropCount ?? 1,
+      still: d.still ?? false,
+      hangs: d.hangs ?? null,
+      stands: d.stands ?? null,
+      pointed: d.pointed ?? false,
+      wallPlant: d.wallPlant ?? false,
+      powder: d.powder ?? false,
+      oxidizes: d.oxidizes ?? null,
+      scrapes: d.scrapes ?? null,
+      candle: d.candle ?? null,
       crop: d.crop ?? -1,
       farmland: d.farmland ?? false,
       wet: d.wet ?? false,
@@ -280,6 +377,8 @@ for (const b of BLOCKS) {
   if (b.door === 'upper') b.partnerBase = BLOCK_ID[b.name.replace(/_top$/, '')];
   if (b.bed === 'foot') b.partnerBase = BLOCK_ID[`${b.name}_head`];
   if (b.bed === 'head') b.partnerBase = BLOCK_ID[b.name.replace(/_head$/, '')];
+  if (b.candle === 'unlit') b.litId = BLOCK_ID[`${b.name}_lit`];
+  if (b.candle === 'lit') b.unlitId = BLOCK_ID[b.drop];
 }
 
 // Where the other half of a two-block block (door, bed) is, relative to this one.
@@ -486,6 +585,11 @@ export function shapeBoxes(id, get, collide = false) {
     }
     case SHAPE.TORCH:
       return [[7 * H, 0, 7 * H, 9 * H, 10 * H, 9 * H]];
+    case SHAPE.ROD:
+      return [[7 * H, 0, 7 * H, 9 * H, 12 * H, 9 * H], [6 * H, 12 * H, 6 * H, 10 * H, 1, 10 * H]];
+    case SHAPE.AZALEA:
+      // A leafy top on a short stem.
+      return collide ? [[0, 0, 0, 1, 1, 1]] : [[0, 8 * H, 0, 1, 1, 1], [6 * H, 0, 6 * H, 10 * H, 8 * H, 10 * H]];
     case SHAPE.CROSS:
       return [[2 * H, 0, 2 * H, 14 * H, 13 * H, 14 * H]];
     default:

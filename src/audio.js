@@ -10,6 +10,7 @@ const MATERIAL = {
   snow: { type: 'lowpass', freq: 1200, q: 0.5, dur: 0.18, gain: 0.35 },
   glass: { type: 'highpass', freq: 3000, q: 1, dur: 0.22, gain: 0.45, tone: 1800 },
   cloth: { type: 'lowpass', freq: 900, q: 0.4, dur: 0.14, gain: 0.35 },
+  metal: { type: 'bandpass', freq: 2600, q: 3, dur: 0.16, gain: 0.45, tone: 1200 },
 };
 
 const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
@@ -177,6 +178,9 @@ export class Audio {
     } else if (kind === 'spider') this.burst({ type: 'highpass', freq: sound === 'hurt' ? 2400 : 3200, q: 0.6, dur: 0.35, gain: 0.18 }, this.att(pos, listener));
     else if (kind === 'zombie') this.tone(sound === 'hurt' ? 160 : 95 + Math.random() * 20, sound === 'hurt' ? 0.25 : 0.7, { type: 'sawtooth', gain: 0.16, slide: 0.8, pos, listener });
     else if (kind === 'creeper' && sound === 'hurt') this.burst({ type: 'highpass', freq: 2000, q: 0.5, dur: 0.25, gain: 0.3 }, this.att(pos, listener));
+    else if (kind === 'goat') this.tone(sound === 'hurt' ? 640 : 520 + Math.random() * 80, 0.4, { type: 'sawtooth', gain: 0.07, slide: 0.85, pos, listener });
+    else if (kind === 'axolotl' && sound === 'idle') this.tone(1300, 0.12, { type: 'sine', gain: 0.06, slide: 1.4, pos, listener });
+    else if (kind === 'squid' || kind === 'glow_squid') this.burst({ type: 'lowpass', freq: 500, q: 0.6, dur: 0.3, gain: 0.15 }, this.att(pos, listener));
   }
 
   // Generative background music: short, sparse phrases every couple of minutes.

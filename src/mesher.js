@@ -408,7 +408,7 @@ function crossQuads(buf, layer, i, x, y, z, inset, height, shade, sway = 0) {
 }
 
 function emitCross(id, i, x, y, z) {
-  crossQuads(solidBuf, FACE_TEX[id * 6 + 4], i, x, y, z, 0.15, 1, 0.9, 2);
+  crossQuads(solidBuf, FACE_TEX[id * 6 + 4], i, x, y, z, 0.15, 1, 0.9, BLOCKS[id].still ? 0 : 2);
 }
 
 function emitFire(i, x, y, z) {

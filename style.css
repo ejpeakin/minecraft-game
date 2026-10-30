@@ -50,6 +50,8 @@ button, input, select { font: inherit; }
 #inlava { background: rgba(255, 90, 0, 0.6); }
 #hurt { background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 0, 0, 0.55)); transition: opacity 0.05s; }
 #sleep-fade { background: #000; transition: opacity 1.2s; }
+#frost { background: radial-gradient(ellipse at center, rgba(220, 236, 255, 0.15) 30%, rgba(236, 246, 255, 0.9)); transition: opacity 0.4s; }
+#spyglass { background: radial-gradient(circle at center, transparent 0, transparent 32vmin, #000 33vmin); transition: none; }
 #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); mix-blend-mode: difference; }
 #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; }
 #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }

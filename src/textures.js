@@ -659,6 +659,259 @@ for (const [color] of COLORS) {
   GEN[`${color}_concrete`] = (t, r) => noiseFill(t, r, hex(CONCRETE[color]), 0.025);
 }
 
+// --- Caves & Cliffs ------------------------------------------------------------------
+
+const DEEP = [80, 80, 88];
+// Deepslate: dark and layered, with short darker streaks running sideways.
+function deepslateBase(t, r) {
+  noiseFill(t, r, DEEP, 0.07);
+  for (let i = 0; i < 14; i++) {
+    const y = Math.floor(r() * S), x = Math.floor(r() * S), len = 3 + Math.floor(r() * 5);
+    const c = r() < 0.6 ? mul(DEEP, 0.72) : mul(DEEP, 1.18);
+    for (let k = 0; k < len; k++) t.set((x + k) % S, y, mul(c, 0.95 + r() * 0.1));
+  }
+}
+GEN.deepslate = deepslateBase;
+GEN.deepslate_top = (t, r) => {
+  noiseFill(t, r, DEEP, 0.06);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const d = Math.abs(x - 7.5) + Math.abs(y - 7.5);
+    if (Math.floor(d) % 4 === 0) t.set(x, y, mul(DEEP, 0.78 + r() * 0.08));
+  }
+};
+GEN.cobbled_deepslate = (t, r) => {
+  const c = cells(r, 11);
+  const shades = Array.from({ length: 11 }, () => 0.75 + r() * 0.4);
+  for (let i = 0; i < S * S; i++) {
+    const [ci, edge] = c[i];
+    t.set(i % S, Math.floor(i / S), edge ? mul(DEEP, 0.45) : mul(DEEP, shades[ci] * (0.92 + r() * 0.16)));
+  }
+};
+GEN.polished_deepslate = (t, r) => {
+  noiseFill(t, r, mul(DEEP, 0.95), 0.04);
+  for (let i = 0; i < S; i++) {
+    t.set(i, 0, mul(DEEP, 1.15)); t.set(0, i, mul(DEEP, 1.1));
+    t.set(i, 15, mul(DEEP, 0.6)); t.set(15, i, mul(DEEP, 0.65));
+  }
+};
+GEN.deepslate_bricks = (t, r) => bricksPattern(t, r, DEEP, mul(DEEP, 0.5), 8, 4);
+GEN.deepslate_tiles = (t, r) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const seam = x % 4 === 3 || y % 4 === 3;
+    t.set(x, y, seam ? mul(DEEP, 0.45) : mul(DEEP, (x % 4 === 0 || y % 4 === 0 ? 1.08 : 0.94) * (0.94 + r() * 0.1)));
+  }
+};
+GEN.tuff = (t, r) => { noiseFill(t, r, [108, 109, 102], 0.07); speckle(t, r, [78, 80, 74], 34); speckle(t, r, [142, 142, 134], 16); blobs(t, r, [96, 98, 90], 4, 2, 5, 0.05); };
+GEN.calcite = (t, r) => { noiseFill(t, r, [224, 226, 222], 0.03); blobs(t, r, [198, 200, 198], 6, 3, 7, 0.03); speckle(t, r, [240, 242, 240], 10, 0.02); };
+GEN.smooth_basalt = (t, r) => { noiseFill(t, r, [72, 72, 78], 0.05); speckle(t, r, [54, 54, 60], 24); blobs(t, r, [84, 84, 90], 3, 3, 6, 0.04); };
+const ROCK = { granite: [[151, 104, 86], [184, 134, 114], [112, 74, 60]], diorite: [[190, 190, 190], [228, 228, 228], [122, 122, 124]], andesite: [[136, 136, 137], [160, 160, 162], [104, 104, 106]] };
+for (const [rock, [base, light, dark]] of Object.entries(ROCK)) {
+  GEN[rock] = (t, r) => { noiseFill(t, r, base, 0.07); speckle(t, r, light, 26); speckle(t, r, dark, 26); blobs(t, r, mix(base, dark, 0.4), 4, 2, 5, 0.05); };
+  GEN[`polished_${rock}`] = (t, r) => {
+    noiseFill(t, r, base, 0.035);
+    speckle(t, r, mix(base, light, 0.5), 10, 0.03);
+    for (let i = 0; i < S; i++) { t.set(i, 0, mix(base, light, 0.6)); t.set(0, i, mix(base, light, 0.5)); t.set(i, 15, mix(base, dark, 0.6)); t.set(15, i, mix(base, dark, 0.5)); }
+  };
+}
+const ORE_COLORS = {
+  coal: [[40, 40, 40], [25, 25, 25]],
+  iron: [[216, 175, 147], [140, 105, 85]],
+  gold: [[252, 238, 75], [180, 140, 30]],
+  diamond: [[93, 236, 245], [30, 150, 160]],
+  copper: [[226, 124, 82], [124, 170, 140]],
+  redstone: [[255, 36, 28], [140, 0, 0]],
+  lapis: [[48, 88, 214], [22, 44, 128]],
+  emerald: [[64, 226, 110], [18, 124, 52]],
+};
+for (const [kind, [c, dark]] of Object.entries(ORE_COLORS)) {
+  if (!GEN[`${kind}_ore`]) GEN[`${kind}_ore`] = (t, r) => { GEN.stone(t, r); ore(t, r, c, dark); };
+  GEN[`deepslate_${kind}_ore`] = (t, r) => { deepslateBase(t, r); ore(t, r, c, dark); };
+}
+GEN.lapis_block = (t, r) => { noiseFill(t, r, [31, 67, 140], 0.08); speckle(t, r, [60, 110, 210], 18); speckle(t, r, [210, 180, 60], 4, 0.05); };
+GEN.redstone_block = (t, r) => {
+  noiseFill(t, r, [170, 24, 6], 0.06);
+  for (let y = 1; y < S; y += 3) for (let x = (y % 2) + 1; x < S; x += 3) t.set(x, y, [230, 60, 30]);
+};
+GEN.emerald_block = (t, r) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const facet = ((x + y) >> 2) % 2 === 0;
+    t.set(x, y, mul(facet ? [62, 214, 104] : [36, 170, 76], 0.94 + r() * 0.1));
+  }
+  for (let i = 0; i < S; i++) { t.set(i, 0, [120, 240, 160]); t.set(0, i, [110, 236, 150]); t.set(i, 15, [20, 110, 50]); t.set(15, i, [22, 118, 52]); }
+};
+GEN.raw_copper_block = (t, r) => { noiseFill(t, r, [154, 105, 79], 0.1); blobs(t, r, [196, 120, 84], 6, 3, 6, 0.08); blobs(t, r, [110, 72, 52], 5, 2, 4, 0.06); };
+const COPPER_STAGES = { '': [194, 108, 80], exposed_: [161, 126, 104], weathered_: [108, 153, 110], oxidized_: [82, 162, 132] };
+for (const [stage, c] of Object.entries(COPPER_STAGES)) {
+  GEN[`${stage}copper`] = (t, r) => {
+    noiseFill(t, r, c, 0.05);
+    for (let i = 0; i < 5; i++) {
+      const y = 2 + Math.floor(r() * 12), x = Math.floor(r() * 10);
+      for (let k = 0; k < 5; k++) t.set(x + k, y + (k > 2 ? 1 : 0), mul(c, 1.16));
+    }
+    speckle(t, r, mul(c, 0.82), 14, 0.04);
+  };
+  GEN[`${stage}cut_copper`] = (t, r) => {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const seam = x % 8 === 7 || y % 8 === 7;
+      const hi = x % 8 === 0 || y % 8 === 0;
+      t.set(x, y, seam ? mul(c, 0.68) : mul(c, (hi ? 1.14 : 1) * (0.95 + r() * 0.08)));
+    }
+  };
+}
+GEN.lightning_rod = (t, r) => {
+  const c = COPPER_STAGES[''];
+  for (let y = 0; y < S; y++) for (let x = 6; x < 10; x++) {
+    if (y >= 4 && (x === 6 || x === 9)) continue;
+    t.set(x, y, mul(c, (x === 6 || x === 7 ? 1.12 : 0.86) * (0.95 + r() * 0.08)));
+  }
+};
+const AMETHYST = [154, 112, 214];
+GEN.amethyst_block = (t, r) => {
+  // Crystal facets: light edges between mid-purple cells.
+  const c = cells(r, 8);
+  const shades = Array.from({ length: 8 }, () => 0.92 + r() * 0.24);
+  for (let i = 0; i < S * S; i++) {
+    const [ci, edge] = c[i];
+    t.set(i % S, Math.floor(i / S), edge ? [206, 170, 246] : mul(AMETHYST, shades[ci] * (0.95 + r() * 0.08)));
+  }
+};
+GEN.budding_amethyst = (t, r) => {
+  GEN.amethyst_block(t, r);
+  for (let i = 0; i < 5; i++) {
+    const x = 2 + Math.floor(r() * 12), y = 2 + Math.floor(r() * 12);
+    t.set(x, y, [62, 36, 96]); t.set(x + 1, y, [80, 50, 120]); t.set(x, y + 1, [80, 50, 120]); t.set(x - 1, y - 1, [226, 190, 255]);
+  }
+};
+GEN.amethyst_cluster = (t, r) => {
+  // Crystals pointing up from the bottom edge.
+  for (const [cx, h, w] of [[4, 9, 2], [8, 13, 3], [11, 8, 2], [6, 6, 1], [13, 5, 1]]) {
+    for (let y = 0; y < h; y++) {
+      const half = Math.max(0, Math.round(w * (1 - y / h)));
+      for (let x = cx - half; x <= cx + half; x++) t.set(x, 15 - y, mul(x < cx ? [222, 180, 255] : x === cx ? [176, 128, 232] : [118, 78, 170], 0.94 + r() * 0.1));
+    }
+  }
+};
+GEN.tinted_glass = (t, r) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const edge = x === 0 || y === 0 || x === 15 || y === 15;
+    if (edge) t.set(x, y, [62, 50, 72]);
+    else if ((x + y) % 2 === 0 || r() < 0.25) t.set(x, y, mul([46, 38, 56], 0.9 + r() * 0.2));
+  }
+};
+GEN.dripstone_block = (t, r) => {
+  // Rough tan stone in thin wavy layers.
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const layer = Math.sin((y + Math.sin(x * 0.8) * 1.2) * 1.6) * 0.06;
+    t.set(x, y, mul([140, 112, 96], 0.94 + layer + (r() - 0.5) * 0.16));
+  }
+  speckle(t, r, [104, 82, 70], 26);
+  speckle(t, r, [176, 146, 128], 14);
+};
+GEN.pointed_dripstone_up = (t, r) => {
+  // Wide at the bottom, a sharp tip near the top.
+  for (let y = 2; y < S; y++) {
+    const half = Math.floor(((y - 2) / 13) * 3.4);
+    for (let x = 7 - half; x <= 8 + half; x++) t.set(x, y, mul(x < 8 ? [162, 132, 114] : [118, 92, 78], 0.92 + r() * 0.12));
+  }
+};
+GEN.pointed_dripstone_down = (t, r) => {
+  for (let y = 0; y < 14; y++) {
+    const half = Math.floor(((13 - y) / 13) * 3.4);
+    for (let x = 7 - half; x <= 8 + half; x++) t.set(x, y, mul(x < 8 ? [162, 132, 114] : [118, 92, 78], 0.92 + r() * 0.12));
+  }
+};
+const MOSS = [89, 110, 45];
+GEN.moss_block = (t, r) => { noiseFill(t, r, MOSS, 0.1); speckle(t, r, [112, 138, 58], 30); speckle(t, r, [66, 84, 32], 22); };
+GEN.rooted_dirt = (t, r) => {
+  GEN.dirt(t, r);
+  for (let i = 0; i < 5; i++) {
+    let x = Math.floor(r() * S), y = Math.floor(r() * S);
+    for (let k = 0; k < 6; k++) { t.set(x, y, [168, 126, 84]); x += r() < 0.5 ? 1 : 0; y += 1; }
+  }
+};
+GEN.hanging_roots = (t, r) => {
+  for (const x0 of [3, 6, 9, 12]) {
+    let x = x0;
+    const len = 8 + Math.floor(r() * 7);
+    for (let y = 0; y < len; y++) { t.set(x, y, mul([156, 116, 80], 0.9 + r() * 0.2)); if (r() < 0.25) x += r() < 0.5 ? 1 : -1; }
+  }
+};
+const AZALEA = [96, 126, 46];
+const azaleaLeaves = (t, r, flowers, holes) => {
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    if (holes && r() < 0.14) continue;
+    t.set(x, y, mul(AZALEA, 0.72 + r() * 0.45));
+  }
+  if (flowers) for (let i = 0; i < 9; i++) {
+    const x = Math.floor(r() * 15), y = Math.floor(r() * 15);
+    t.set(x, y, [214, 96, 196]); t.set(x + 1, y, [190, 70, 172]); t.set(x, y + 1, [190, 70, 172]); t.set(x + 1, y + 1, [240, 150, 226]);
+  }
+};
+const azaleaSide = (flowers) => (t, r) => {
+  // Leafy top half; the stem shows through the middle of the bottom half.
+  for (let y = 0; y < 8; y++) for (let x = 0; x < S; x++) t.set(x, y, mul(AZALEA, 0.72 + r() * 0.42));
+  for (let x = 0; x < S; x++) if (r() < 0.5) t.set(x, 7, mul(AZALEA, 0.6));
+  for (let y = 8; y < S; y++) for (let x = 6; x < 10; x++) t.set(x, y, mul(x < 8 ? [120, 96, 60] : [92, 72, 44], 0.92 + r() * 0.12));
+  if (flowers) for (let i = 0; i < 4; i++) { const x = 1 + Math.floor(r() * 13), y = Math.floor(r() * 6); t.set(x, y, [214, 96, 196]); t.set(x + 1, y + 1, [240, 150, 226]); }
+};
+GEN.azalea_top = (t, r) => azaleaLeaves(t, r, false, false);
+GEN.flowering_azalea_top = (t, r) => azaleaLeaves(t, r, true, false);
+GEN.azalea_bottom = (t, r) => { azaleaLeaves(t, r, false, false); for (let i = 0; i < t.d.length; i += 4) { t.d[i] *= 0.75; t.d[i + 1] *= 0.75; t.d[i + 2] *= 0.75; } };
+GEN.azalea_side = azaleaSide(false);
+GEN.flowering_azalea_side = azaleaSide(true);
+GEN.azalea_leaves = (t, r) => azaleaLeaves(t, r, false, true);
+GEN.flowering_azalea_leaves = (t, r) => azaleaLeaves(t, r, true, true);
+const vines = (berries) => (t, r) => {
+  for (let y = 0; y < S; y++) {
+    const x = 7 + Math.round(Math.sin(y * 0.7) * 1.2);
+    t.set(x, y, mul([70, 104, 34], 0.9 + r() * 0.2));
+    if (y % 3 === 0) { t.set(x - 1, y, [88, 128, 44]); t.set(x - 2, y + 1, [74, 110, 36]); }
+    if (y % 3 === 1) { t.set(x + 1, y, [88, 128, 44]); t.set(x + 2, y + 1, [74, 110, 36]); }
+  }
+  if (berries) for (const [x, y] of [[4, 4], [10, 9], [5, 12]]) {
+    t.set(x, y, [255, 196, 64]); t.set(x + 1, y, [244, 150, 30]); t.set(x, y + 1, [244, 150, 30]); t.set(x + 1, y + 1, [255, 226, 120]);
+  }
+};
+GEN.cave_vines = vines(false);
+GEN.cave_vines_lit = vines(true);
+GEN.spore_blossom = (t, r) => {
+  // Hangs from the ceiling: a green cap at the top, pink petals spreading down and out.
+  for (let x = 5; x < 11; x++) { t.set(x, 0, [70, 110, 40]); t.set(x, 1, [90, 130, 50]); }
+  for (let y = 2; y < 9; y++) {
+    const half = 2 + Math.floor((y - 2) * 0.9);
+    for (let x = 8 - half; x < 8 + half; x++) if (r() < 0.85) t.set(x, y, mul(y % 2 ? [230, 120, 200] : [200, 84, 172], 0.92 + r() * 0.12));
+  }
+};
+GEN.glow_lichen = (t, r) => {
+  for (let i = 0; i < 9; i++) {
+    let x = Math.floor(r() * S), y = Math.floor(r() * S);
+    for (let k = 0; k < 7; k++) {
+      t.set(x, y, r() < 0.3 ? [200, 236, 200] : mul([120, 176, 150], 0.9 + r() * 0.2));
+      if (r() < 0.5) x = (x + (r() < 0.5 ? 1 : -1) + S) % S; else y = (y + (r() < 0.5 ? 1 : -1) + S) % S;
+    }
+  }
+};
+GEN.powder_snow = (t, r) => { noiseFill(t, r, [246, 250, 254], 0.025); speckle(t, r, [222, 232, 246], 22, 0.02); };
+GEN.packed_ice = (t, r) => {
+  noiseFill(t, r, [140, 178, 246], 0.04);
+  for (let i = 0; i < 5; i++) {
+    let x = Math.floor(r() * S), y = Math.floor(r() * S);
+    for (let k = 0; k < 6; k++) { t.set(x, y, [176, 206, 255]); x = (x + 1) % S; if (r() < 0.5) y = (y + 1) % S; }
+  }
+};
+// Candles: a short wax stick in the middle of the tile (the torch shape shows the
+// middle two columns), with a flame on the lit ones.
+const CANDLE_WAX = { '': [230, 210, 160], ...Object.fromEntries(Object.entries(WOOL).map(([k, v]) => [`${k}_`, hex(v)])) };
+for (const [color, wax] of Object.entries(CANDLE_WAX)) {
+  const draw = (lit) => (t, r) => {
+    for (let y = 10; y < S; y++) { t.set(7, y, mul(wax, 1.08 * (0.95 + r() * 0.08))); t.set(8, y, mul(wax, 0.86 * (0.95 + r() * 0.08))); }
+    t.set(7, 9, [52, 40, 30]);
+    if (lit) { t.set(7, 8, [255, 176, 48]); t.set(8, 8, [255, 210, 90]); t.set(7, 7, [255, 240, 170]); t.set(8, 7, [255, 200, 80]); }
+  };
+  GEN[`${color}candle`] = draw(false);
+  GEN[`${color}candle_lit`] = draw(true);
+}
+
 // --- Item icons ----------------------------------------------------------------------
 
 function line(t, x0, y0, x1, y1, c) {
@@ -863,6 +1116,37 @@ const ITEM_GEN = {
   water_bucket(t) { bucketIcon(t, [52, 92, 224]); },
   lava_bucket(t) { bucketIcon(t, [230, 110, 30]); },
   explorer_map(t) { mapIcon(t, true); },
+  raw_copper(t, r) { disc(t, 8, 9, 4.6, () => mul([192, 112, 80], 0.75 + r() * 0.5)); speckle(t, r, [124, 170, 140], 3); outline(t, [70, 36, 22]); },
+  copper_ingot(t) { ingot(t, [214, 120, 84]); },
+  redstone(t, r) { for (let i = 0; i < 46; i++) { const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 5; t.set(Math.round(8 + Math.cos(a) * d), Math.round(10 + Math.sin(a) * d * 0.6), mul([220, 20, 10], 0.6 + r() * 0.6)); } outline(t, [70, 0, 0]); },
+  lapis_lazuli(t, r) { fillPoly(t, [[4, 6], [9, 3], [13, 6], [11, 12], [5, 12]], () => mul([40, 80, 200], 0.8 + r() * 0.4)); speckle(t, r, [220, 190, 70], 2); outline(t, [14, 26, 80]); },
+  emerald(t) {
+    fillPoly(t, [[8, 1.5], [12.5, 6], [12.5, 10], [8, 14.5], [3.5, 10], [3.5, 6]], (x, y) => (x < 7 && y < 8 ? [150, 255, 180] : x < 8 ? [60, 220, 110] : [24, 160, 70]));
+    outline(t, [8, 70, 30]);
+  },
+  amethyst_shard(t) {
+    fillPoly(t, [[3, 13], [6, 6], [10, 2], [12, 4], [9, 9], [5, 14]], (x, y) => (x + y < 14 ? [226, 186, 255] : [150, 100, 210]));
+    outline(t, [70, 40, 110]);
+  },
+  glow_berries(t) {
+    line(t, 8, 1, 8, 5, [70, 110, 40]); line(t, 8, 3, 11, 2, [90, 130, 50]);
+    disc(t, 6, 9, 3, (x, y) => (x + y < 13 ? [255, 220, 110] : [240, 150, 30]));
+    disc(t, 10.5, 11, 2.6, (x, y) => (x + y < 19 ? [255, 210, 100] : [236, 140, 28]));
+    outline(t, [110, 60, 10]);
+  },
+  ink_sac(t) { disc(t, 8, 9, 4.5, (x, y) => (x + y < 14 ? [70, 66, 90] : [34, 30, 48])); t.set(8, 3, [40, 36, 54]); t.set(8, 4, [40, 36, 54]); outline(t, [12, 10, 18]); },
+  glow_ink_sac(t) { disc(t, 8, 9, 4.5, (x, y) => (x + y < 14 ? [120, 250, 220] : [40, 170, 150])); t.set(8, 3, [40, 140, 120]); t.set(8, 4, [40, 140, 120]); outline(t, [10, 60, 50]); },
+  spyglass(t) {
+    line(t, 3, 13, 9, 7, [194, 108, 80]); line(t, 4, 13, 10, 7, [150, 80, 56]);
+    line(t, 9, 6, 12, 3, [214, 124, 90]); line(t, 10, 6, 13, 3, [160, 86, 60]);
+    t.set(13, 2, [200, 170, 255]); t.set(12, 2, [170, 130, 230]); t.set(13, 3, [170, 130, 230]);
+    outline(t, [60, 30, 18]);
+  },
+  lightning_rod(t) {
+    for (let y = 4; y < 15; y++) { t.set(7, y, [214, 124, 90]); t.set(8, y, [160, 86, 60]); }
+    for (let y = 1; y < 4; y++) for (let x = 6; x < 10; x++) t.set(x, y, x < 8 ? [226, 140, 104] : [176, 96, 66]);
+    outline(t, [60, 30, 18]);
+  },
 };
 
 // Armor icons from pixel maps: X outline, l light, m middle, d dark.
